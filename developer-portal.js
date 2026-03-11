@@ -27,7 +27,7 @@ async function init() {
 
   document.body.classList.remove('auth-pending');
   document.getElementById('user-name').textContent = data.user;
-  document.getElementById('portal').style.display = '';
+  document.getElementById('portal').classList.remove('portal--hidden');
 
   loadApps();
 }
@@ -56,7 +56,7 @@ async function loadApps() {
     }
 
     list.innerHTML = apps.map((app, i) => `
-      <div class="app-card" style="animation-delay:${i * 0.05}s" data-client-id="${esc(app.client_id)}" data-app-name="${esc(app.name)}">
+      <div class="app-card" data-client-id="${esc(app.client_id)}" data-app-name="${esc(app.name)}">
         <div class="app-card-header">
           <div>
             <div class="app-name">${esc(app.name)}</div>
@@ -86,7 +86,7 @@ async function loadApps() {
     });
 
   } catch {
-    list.innerHTML = `<div style="text-align:center;padding:20px;font-size:13px;color:#EF4444;">
+    list.innerHTML = `<div class="apps-load-error">
       โหลดข้อมูลไม่สำเร็จ กรุณา refresh หน้า</div>`;
     count.textContent = '— apps';
   }
