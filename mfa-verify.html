@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; form-action 'self'; base-uri 'none';">
-  <title>Verify Identity — CARS</title>
-  <link rel="stylesheet" href="style.css">
+  <title>Verify Identity — CARS SSO</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <div id="particles"></div>
@@ -19,17 +19,20 @@
       <div class="emblem-ring"></div>
       <div class="emblem-bg">🛡️</div>
     </div>
-    <h1 class="heading">Verify Identity</h1>
+    <h1 class="heading">Verify identity</h1>
     <p class="subtitle">Enter the 6-digit code sent to your email</p>
 
     <div id="status-box" class="status-box" role="alert" aria-live="assertive" aria-atomic="true"></div>
 
     <form id="mfa-form" novalidate>
-      <div class="field">
-        <label for="mfa-code">One-Time Code</label>
-        <input type="text" id="mfa-code" name="mfa-code" class="mfa-input" placeholder="000000"
-          inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}"
-          minlength="6" maxlength="6" required aria-required="true" aria-describedby="status-box">
+      <div class="otp-grid" id="otp-grid" role="group" aria-label="One-time code">
+        <input class="otp-box" type="text" inputmode="numeric" maxlength="1" pattern="[0-9]" autocomplete="one-time-code" aria-label="Digit 1" required>
+        <input class="otp-box" type="text" inputmode="numeric" maxlength="1" pattern="[0-9]" aria-label="Digit 2" required>
+        <input class="otp-box" type="text" inputmode="numeric" maxlength="1" pattern="[0-9]" aria-label="Digit 3" required>
+        <div class="otp-sep" aria-hidden="true"></div>
+        <input class="otp-box" type="text" inputmode="numeric" maxlength="1" pattern="[0-9]" aria-label="Digit 4" required>
+        <input class="otp-box" type="text" inputmode="numeric" maxlength="1" pattern="[0-9]" aria-label="Digit 5" required>
+        <input class="otp-box" type="text" inputmode="numeric" maxlength="1" pattern="[0-9]" aria-label="Digit 6" required>
       </div>
       <button type="submit" id="mfa-verify-btn" class="btn-primary">Verify Code</button>
     </form>
@@ -41,7 +44,7 @@
       <a href="/login" class="back-link-muted">Cancel and return to sign in</a>
     </div>
   </div>
-  <script src="effects.js"></script>
-  <script src="script.js"></script>
+  <script src="/effects.js"></script>
+  <script src="/script.js"></script>
 </body>
 </html>

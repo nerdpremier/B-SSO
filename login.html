@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; form-action 'self'; base-uri 'none';">
-  <title>CARS Single Sign-On</title>
-  <link rel="stylesheet" href="style.css">
+  <title>Sign In — CARS SSO</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <div id="particles"></div>
@@ -19,21 +19,30 @@
       <div class="emblem-ring"></div>
       <div class="emblem-bg">🚗</div>
     </div>
-    <h1 class="heading">Welcome to CARS</h1>
-    <p class="subtitle">Sign in to your account</p>
+    <h1 class="heading">Welcome back</h1>
+    <p class="subtitle">Sign in to your CARS account</p>
 
     <div id="status-box" class="status-box" role="status" aria-live="polite" aria-atomic="true"></div>
 
     <form id="login-form" novalidate>
       <div class="field">
         <label for="username">Username</label>
-        <input type="text" id="username" name="username" placeholder="Enter your username"
-          autocomplete="username" maxlength="32" required aria-required="true" aria-describedby="status-box">
+        <input type="text" id="username" name="username"
+          placeholder="Enter your username"
+          autocomplete="username" maxlength="32"
+          required aria-required="true" aria-describedby="status-box">
       </div>
       <div class="field">
         <label for="password">Password</label>
-        <input type="password" id="password" name="password" placeholder="Enter your password"
-          autocomplete="current-password" maxlength="128" required aria-required="true" aria-describedby="status-box">
+        <div class="input-wrap">
+          <input type="password" id="password" name="password"
+            placeholder="Enter your password"
+            autocomplete="current-password" maxlength="128"
+            required aria-required="true" aria-describedby="status-box">
+          <button type="button" class="btn-pwd-toggle" aria-label="Show password" data-target="password">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
       </div>
       <div class="checkbox-group">
         <input type="checkbox" id="remember-device" name="remember-device">
@@ -47,7 +56,7 @@
       <a href="/register">Create account</a>
     </div>
   </div>
-  <script src="effects.js"></script>
-  <script src="script.js"></script>
+  <script src="/effects.js"></script>
+  <script src="/script.js"></script>
 </body>
 </html>
