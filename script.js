@@ -402,8 +402,7 @@ async function preLoginCheck() {
             }
         } else {
             if (authData.email_not_verified) {
-                // แสดงข้อความพิเศษพร้อมลิงก์แจ้งให้ตรวจ email
-                updateStatus('warning', '📧 กรุณายืนยันอีเมลของคุณก่อนเข้าสู่ระบบ (ตรวจสอบในกล่องจดหมาย หรือโฟลเดอร์ spam)');
+                updateStatus('danger', '📧 กรุณายืนยันอีเมลของคุณก่อนเข้าสู่ระบบ (ตรวจสอบในกล่องจดหมาย หรือโฟลเดอร์ spam)');
             } else {
                 updateStatus('danger', authData.error);
             }
