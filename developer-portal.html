@@ -23,8 +23,8 @@
       Token ทั้งหมดของ App นี้จะถูกยกเลิกทันที และ User ที่ login ผ่าน App นี้จะถูก logout
     </p>
     <div class="confirm-actions">
-      <button class="btn-cancel" onclick="closeConfirm()">ยกเลิก</button>
-      <button class="btn-confirm-delete" id="btn-confirm-delete" onclick="confirmDelete()">ลบเลย</button>
+      <button class="btn-cancel" id="btn-cancel">ยกเลิก</button>
+      <button class="btn-confirm-delete" id="btn-confirm-delete">ลบเลย</button>
     </div>
   </div>
 </div>
@@ -68,7 +68,7 @@
           <div class="field-hint">URL ที่รับ user กลับหลัง login สำเร็จ</div>
         </div>
         <div>
-          <button class="btn-create" id="btn-create" onclick="createApp()">สร้าง</button>
+          <button class="btn-create" id="btn-create">สร้าง</button>
         </div>
       </div>
 
@@ -79,14 +79,14 @@
           <div class="cred-label">CLIENT ID</div>
           <div class="cred-value">
             <span class="cred-text" id="res-client-id"></span>
-            <button class="btn-copy" onclick="copyText('res-client-id', this)" title="copy">📋</button>
+            <button class="btn-copy" id="copy-client-id" title="copy">📋</button>
           </div>
         </div>
         <div class="credential-row">
           <div class="cred-label">CLIENT SECRET</div>
           <div class="cred-value">
             <span class="cred-text" id="res-client-secret"></span>
-            <button class="btn-copy" onclick="copyText('res-client-secret', this)" title="copy">📋</button>
+            <button class="btn-copy" id="copy-client-secret" title="copy">📋</button>
           </div>
         </div>
         <div class="warn-notice">
@@ -111,7 +111,7 @@
     <!-- Footer -->
     <div class="portal-footer">
       <div class="footer-note">ทำ app ได้สูงสุด 10 apps ต่อ account</div>
-      <button class="btn-logout" onclick="logout()">ออกจากระบบ</button>
+      <button class="btn-logout" id="btn-logout">ออกจากระบบ</button>
     </div>
 
   </div>
@@ -119,6 +119,5 @@
 
 <script src="/effects.js" defer></script>
 <script src="/developer-portal.js" defer></script>
-
 </body>
 </html>

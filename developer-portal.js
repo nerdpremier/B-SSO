@@ -253,24 +253,24 @@ async function copyText(elemId, btn) {
 document.addEventListener('DOMContentLoaded', () => {
   // Enter กด create
   ['input-name', 'input-uri'].forEach(id => {
-    document.getElementById(id).addEventListener('keydown', e => {
+    document.getElementById(id)?.addEventListener('keydown', e => {
       if (e.key === 'Enter') createApp();
     });
   });
 
   // ปุ่ม create
-  document.getElementById('btn-create').addEventListener('click', createApp);
+  document.getElementById('btn-create')?.addEventListener('click', createApp);
 
   // ปุ่ม copy credentials
   document.getElementById('copy-client-id')    ?.addEventListener('click', function() { copyText('res-client-id', this); });
   document.getElementById('copy-client-secret')?.addEventListener('click', function() { copyText('res-client-secret', this); });
 
   // confirm overlay buttons
-  document.getElementById('btn-cancel-confirm') .addEventListener('click', closeConfirm);
-  document.getElementById('btn-confirm-delete') .addEventListener('click', confirmDelete);
+  document.getElementById('btn-cancel')        ?.addEventListener('click', closeConfirm);
+  document.getElementById('btn-confirm-delete')?.addEventListener('click', confirmDelete);
 
   // logout
-  document.getElementById('btn-logout').addEventListener('click', logout);
+  document.getElementById('btn-logout')?.addEventListener('click', logout);
 
   // ปิด overlay เมื่อกด Escape
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closeConfirm(); });
