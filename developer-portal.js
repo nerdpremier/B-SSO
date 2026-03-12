@@ -32,7 +32,7 @@ async function init() {
   loadApps();
 }
 
-// ── Load apps ──────────────────────────────────────────────────
+// ── Load Apps ──────────────────────────────────────────────────
 async function loadApps() {
   const list  = document.getElementById('apps-list');
   const count = document.getElementById('apps-count');
@@ -50,20 +50,20 @@ async function loadApps() {
         <div class="apps-empty">
           <div class="apps-empty-icon">🔌</div>
           <div class="apps-empty-title">No apps yet</div>
-          <div class="apps-empty-sub">Fill in the form above to create your first app.</div>
+          <div class="apps-empty-text">Fill in the form above to create your first app.</div>
         </div>`;
       return;
     }
 
     list.innerHTML = apps.map((app) => `
-      <div class="app-card" role="listitem"
-           data-client-id="${esc(app.client_id)}"
-           data-app-name="${esc(app.name)}">
+      <div class="app-card" role="listitem">
         <div class="app-card-main">
           <div class="app-name">${esc(app.name)}</div>
           <div class="app-id">${esc(app.client_id)}</div>
           <div>
-            ${(app.redirect_uris || []).map(u => `<span class="uri-chip" title="${esc(u)}">${esc(u)}</span>`).join('')}
+            ${(app.redirect_uris || []).map(u =>
+              `<span class="uri-chip" title="${esc(u)}">${esc(u)}</span>`
+            ).join('')}
           </div>
           <div class="app-date">Created ${formatDate(app.created_at)}</div>
         </div>
@@ -83,6 +83,7 @@ async function loadApps() {
         </div>
       </div>`).join('');
 
+    // event delegation for rotate / delete buttons
     list.querySelectorAll('[data-action="rotate"]').forEach(btn => {
       btn.addEventListener('click', () => askRotate(btn.dataset.clientId, btn.dataset.appName));
     });
@@ -92,7 +93,7 @@ async function loadApps() {
 
   } catch {
     list.innerHTML = `<div class="apps-load-error">Failed to load apps. Please refresh the page.</div>`;
-    count.textContent = '— apps';
+    count.textContent = '—';
   }
 }
 
@@ -101,12 +102,10 @@ async function createApp() {
   const name      = document.getElementById('input-name').value.trim();
   const uri       = document.getElementById('input-uri').value.trim();
   const btn       = document.getElementById('btn-create');
-  const status    = document.getElementById('create-status');
   const resultBox = document.getElementById('result-box');
 
   resultBox.style.display = 'none';
-  status.className     = '';
-  status.style.display = 'none';
+  clearCreateError();
 
   if (!name) return showCreateError('Please enter an app name.');
   if (!uri)  return showCreateError('Please enter a Callback URL.');
@@ -130,13 +129,17 @@ async function createApp() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, redirect_uris: [uri] })
     });
-
     const data = await res.json();
-    if (!res.ok) { showCreateError(data.error || 'An error occurred. Please try again.'); return; }
+
+    if (!res.ok) {
+      showCreateError(data.error || 'An error occurred. Please try again.');
+      return;
+    }
 
     document.getElementById('res-client-id').textContent     = data.client_id;
     document.getElementById('res-client-secret').textContent = data.client_secret;
     resultBox.style.display = 'block';
+    resultBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
     document.getElementById('input-name').value = '';
     document.getElementById('input-uri').value  = '';
@@ -152,16 +155,27 @@ async function createApp() {
 
 function showCreateError(msg) {
   const el = document.getElementById('create-status');
-  el.textContent   = '⚠️ ' + msg;
-  el.className     = 'danger';
+  el.textContent = '⚠️ ' + msg;
+  el.className   = 'create-error';
   el.style.display = 'block';
   document.getElementById('btn-create').disabled    = false;
   document.getElementById('btn-create').textContent = 'Create App';
 }
 
+function clearCreateError() {
+  const el = document.getElementById('create-status');
+  el.textContent   = '';
+  el.style.display = 'none';
+  el.className     = '';
+}
+
 // ── Rotate Secret ───────────────────────────────────────────────
 function askRotate(clientId, appName) {
-  if (!confirm(`Rotate the client_secret for "${appName}"?\n\nAll existing tokens will be revoked immediately. You will need to update the secret in your application.`)) return;
+  if (!confirm(
+    `Rotate the client secret for "${appName}"?\n\n` +
+    `All existing tokens will be revoked immediately.\n` +
+    `You will need to update the secret in your application.`
+  )) return;
   doRotate(clientId);
 }
 
@@ -174,9 +188,18 @@ async function doRotate(clientId) {
       body: JSON.stringify({ client_id: clientId })
     });
     const data = await res.json();
-    if (!res.ok) { alert(data.error || 'Rotation failed. Please try again.'); return; }
 
-    alert(`✅ Secret rotated!\n\nClient ID: ${data.client_id}\nNew Client Secret:\n${data.client_secret}\n\n⚠️ Copy and save this now — it will not be shown again.`);
+    if (!res.ok) {
+      alert(data.error || 'Rotation failed. Please try again.');
+      return;
+    }
+
+    alert(
+      `✅ Secret rotated successfully!\n\n` +
+      `Client ID: ${data.client_id}\n` +
+      `New Client Secret:\n${data.client_secret}\n\n` +
+      `⚠️ Copy and save this now — it cannot be viewed again.`
+    );
     loadApps();
   } catch {
     alert('Unable to connect to server. Please try again.');
@@ -187,12 +210,13 @@ async function doRotate(clientId) {
 function askDelete(clientId, appName) {
   pendingDeleteId   = clientId;
   pendingDeleteName = appName;
-  document.getElementById('confirm-app-name').textContent = '"' + appName + '"';
+  document.getElementById('confirm-app-name').textContent = `"${appName}"`;
   document.getElementById('confirm-overlay').style.display = 'flex';
 }
 
 function closeConfirm() {
-  pendingDeleteId = pendingDeleteName = null;
+  pendingDeleteId   = null;
+  pendingDeleteName = null;
   document.getElementById('confirm-overlay').style.display = 'none';
 }
 
@@ -211,7 +235,11 @@ async function confirmDelete() {
       body: JSON.stringify({ client_id: pendingDeleteId })
     });
 
-    if (!res.ok) { const d = await res.json(); alert(d.error || 'Delete failed. Please try again.'); return; }
+    if (!res.ok) {
+      const d = await res.json();
+      alert(d.error || 'Delete failed. Please try again.');
+      return;
+    }
 
     closeConfirm();
     loadApps();
@@ -245,19 +273,21 @@ function formatDate(iso) {
 }
 
 async function copyText(elemId, btn) {
-  const text = document.getElementById(elemId).textContent;
+  const text = document.getElementById(elemId)?.textContent || '';
   try {
     await navigator.clipboard.writeText(text);
     btn.textContent = '✅ Copied';
-    setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+    setTimeout(() => { btn.textContent = 'Copy'; }, 1800);
   } catch {
     btn.textContent = '❌ Failed';
-    setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+    setTimeout(() => { btn.textContent = 'Copy'; }, 1800);
   }
 }
 
-// ── DOMContentLoaded ───────────────────────────────────────────
+// ── DOM Ready ──────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+
+  // Enter key in create form fields
   ['input-name', 'input-uri'].forEach(id => {
     document.getElementById(id)?.addEventListener('keydown', e => {
       if (e.key === 'Enter') createApp();
@@ -282,7 +312,10 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-logout')
     ?.addEventListener('click', logout);
 
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeConfirm(); });
+  // Close confirm overlay on Escape
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeConfirm();
+  });
 });
 
 // ── Start ──────────────────────────────────────────────────────
