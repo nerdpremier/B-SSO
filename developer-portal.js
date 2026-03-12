@@ -47,10 +47,10 @@ async function loadApps() {
 
     if (apps.length === 0) {
       list.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-icon">🔌</div>
-          <div class="empty-text">ยังไม่มี App</div>
-          <div class="empty-hint">กรอกฟอร์มด้านบนเพื่อสร้าง App แรกของคุณ</div>
+        <div class="apps-empty">
+          <div class="apps-empty-icon">🔌</div>
+          <div class="apps-empty-text">ยังไม่มี App</div>
+          <div class="apps-empty-text" style="font-weight:400; margin-top:4px;">กรอกฟอร์มด้านบนเพื่อสร้าง App แรกของคุณ</div>
         </div>`;
       return;
     }
@@ -100,7 +100,7 @@ async function createApp() {
   const status    = document.getElementById('create-status');
   const resultBox = document.getElementById('result-box');
 
-  resultBox.classList.remove('show');
+  resultBox.style.display = 'none';
   status.className   = '';
   status.style.display = 'none';
 
@@ -132,7 +132,7 @@ async function createApp() {
 
     document.getElementById('res-client-id').textContent     = data.client_id;
     document.getElementById('res-client-secret').textContent = data.client_secret;
-    resultBox.classList.add('show');
+    resultBox.style.display = 'block';
 
     document.getElementById('input-name').value = '';
     document.getElementById('input-uri').value  = '';
@@ -150,6 +150,7 @@ function showCreateError(msg) {
   const el = document.getElementById('create-status');
   el.textContent   = '⚠️ ' + msg;
   el.className     = 'danger';
+  el.style.display = 'block';
   document.getElementById('btn-create').disabled    = false;
   document.getElementById('btn-create').textContent = 'สร้าง';
 }
@@ -183,12 +184,12 @@ function askDelete(clientId, appName) {
   pendingDeleteId   = clientId;
   pendingDeleteName = appName;
   document.getElementById('confirm-app-name').textContent = '"' + appName + '"';
-  document.getElementById('confirm-overlay').classList.add('show');
+  document.getElementById('confirm-overlay').style.display = 'flex';
 }
 
 function closeConfirm() {
   pendingDeleteId = pendingDeleteName = null;
-  document.getElementById('confirm-overlay').classList.remove('show');
+  document.getElementById('confirm-overlay').style.display = 'none';
 }
 
 async function confirmDelete() {

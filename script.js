@@ -137,9 +137,10 @@ function updateStatus(type, msg) {
     if (!box) return;
     box.className = 'status-box';
     box.style.display = 'block';
-    if (type === 'danger')       box.classList.add('danger');
-    else if (type === 'success') box.classList.add('success');
-    else                         box.classList.add('loading');
+    if (type === 'danger')        box.classList.add('danger');
+    else if (type === 'success')  box.classList.add('success');
+    else if (type === 'warning')  box.classList.add('warning');
+    else                          box.classList.add('loading');
     box.textContent = msg;
 }
 
@@ -485,7 +486,7 @@ async function resendMFA() {
         const data = await res.json();
         if (res.ok) {
             startResendCooldown(60); 
-            updateStatus('success', data.message);
+            updateStatus('success', 'ส่งรหัสใหม่เรียบร้อยแล้ว กรุณาตรวจสอบอีเมลของคุณ');
         } else {
             updateStatus('danger', data.error);
         }
@@ -600,7 +601,7 @@ async function executePasswordReset() {
         });
         const data = await res.json();
         if (res.ok) {
-            updateStatus('success', data.message + ' กำลังนำท่านไปหน้าเข้าสู่ระบบ...');
+            updateStatus('success', 'เปลี่ยนรหัสผ่านสำเร็จ กำลังนำท่านไปหน้าเข้าสู่ระบบ...');
             setTimeout(() => window.location.href = '/login', 2000);
         } else {
             updateStatus('danger', data.error);
