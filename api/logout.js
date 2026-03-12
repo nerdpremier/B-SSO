@@ -1,12 +1,17 @@
 // ============================================================
-// 🚪 api/logout.js — Logout + JWT Revocation
-// ทำหน้าที่ 2 อย่างพร้อมกัน:
-//   1. Revoke JWT (insert jti ลง revoked_tokens) — ป้องกัน token reuse หลัง logout
-//   2. Clear cookies (session_token + csrf_token) — ป้องกัน browser ส่ง token เก่า
+// 🚪 api/logout.js — Logout + JWT Revocation + Cron Cleanup
 //
-// Security design:
-//   - ทุก response คืน success: true เสมอ (idempotent)
-//   - Clear cookie ทำงานเสมอ ไม่ว่า token จะ valid หรือไม่
+// รวม 2 handlers ไว้ในไฟล์เดียวเพื่อไม่เกิน Vercel 12-function limit
+// Route ด้วย method:
+//   POST → logout (เดิม)
+//   GET  → cleanup (Vercel Cron: "0 0 * * *")
+//
+// vercel.json:
+//   { "source": "/api/cleanup", "destination": "/api/logout.js" }
+//
+// Security:
+//   POST: CSRF + rate limit (idempotent, คืน success เสมอ)
+//   GET:  timing-safe CRON_SECRET check + rate limit
 // ============================================================
 import '../startup-check.js';
 import { serialize, parse }  from 'cookie';
@@ -17,11 +22,69 @@ import { checkRateLimit }    from '../lib/rate-limit.js';
 import { getClientIp }       from '../lib/ip-utils.js';
 import { runCleanup }        from '../lib/cleanup.js';
 import { setSecurityHeaders, auditLog, isJsonContentType } from '../lib/response-utils.js';
+import crypto from 'crypto';
 
 export default async function handler(req, res) {
-    if (req.method !== 'POST') return res.status(405).send();
-
     setSecurityHeaders(res);
+
+    const ip = getClientIp(req);
+
+    // ── GET: Cron Cleanup ────────────────────────────────────
+    if (req.method === 'GET') {
+        res.setHeader('Cache-Control', 'no-store');
+
+        try {
+            if (await checkRateLimit(`ip:${ip}:cleanup`, 10, 60_000)) {
+                auditLog('CLEANUP_RATE_LIMIT', { ip });
+                return res.status(429).json({ error: 'Too many requests' });
+            }
+        } catch (rlErr) {
+            console.error('[WARN] rate-limit DB error (cleanup), failing open:', rlErr.message);
+        }
+
+        const authHeader = req.headers.authorization;
+        const cronSecret = process.env.CRON_SECRET;
+
+        if (!authHeader || typeof authHeader !== 'string') {
+            auditLog('CLEANUP_UNAUTHORIZED', { ip, reason: 'missing_auth' });
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const parts = authHeader.split(' ');
+        if (parts.length !== 2 || parts[0] !== 'Bearer' || !parts[1]) {
+            auditLog('CLEANUP_UNAUTHORIZED', { ip, reason: 'invalid_auth_format' });
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        // timing-safe comparison ป้องกัน brute-force CRON_SECRET
+        let authorized = false;
+        try {
+            const expected = Buffer.from(cronSecret, 'utf8');
+            const provided = Buffer.from(parts[1], 'utf8');
+            if (expected.length === provided.length) {
+                authorized = crypto.timingSafeEqual(expected, provided);
+            }
+        } catch {
+            authorized = false;
+        }
+
+        if (!authorized) {
+            auditLog('CLEANUP_UNAUTHORIZED', { ip, reason: 'wrong_secret' });
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        try {
+            const result = await runCleanup();
+            auditLog('CLEANUP_COMPLETE', { ip, ...result });
+            return res.status(200).json({ success: true, deleted: result });
+        } catch (err) {
+            console.error('[ERROR] logout.js cleanup:', err);
+            return res.status(500).json({ error: 'Internal server error' });
+        }
+    }
+
+    // ── POST: Logout ─────────────────────────────────────────
+    if (req.method !== 'POST') return res.status(405).send();
 
     if (!isJsonContentType(req)) {
         return res.status(415).json({ error: 'Content-Type must be application/json' });
@@ -31,7 +94,6 @@ export default async function handler(req, res) {
         return res.status(403).json({ error: 'Invalid CSRF token' });
     }
 
-    const ip = getClientIp(req);
     try {
         if (await checkRateLimit(`ip:${ip}:logout`, 20, 60_000)) {
             auditLog('LOGOUT_RATE_LIMIT', { ip });
@@ -70,7 +132,6 @@ export default async function handler(req, res) {
         }
     }
 
-    // Clear ทั้ง session_token และ csrf_token — maxAge: 0 → browser ลบทันที
     res.setHeader('Set-Cookie', [
         serialize('session_token', '', {
             httpOnly: true,
