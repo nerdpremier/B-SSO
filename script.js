@@ -2,36 +2,25 @@
 // 🛡️ CARS SSO — Core Frontend Logic
 // ==========================================
 
-// ── Module-level state ──────────────────────────────────────
 let _submitting = false;
 let resendCooldown = 0;
 let resendTimerInterval;
 let countdownTimer;
 
-// ── Guard wrapper ───────────────────────────────────────────
 async function withGuard(fn, event) {
     if (_submitting) return;
     _submitting = true;
-
     let btn = null;
     if (event && event.target) {
-        if (event.target.tagName === 'FORM') {
-            btn = event.target.querySelector('button[type="submit"], .btn-primary');
-        } else if (event.target.tagName === 'BUTTON') {
-            btn = event.target;
-        }
+        if (event.target.tagName === 'FORM') btn = event.target.querySelector('button[type="submit"], .btn-primary');
+        else if (event.target.tagName === 'BUTTON') btn = event.target;
     }
     if (btn) btn.classList.add('btn--loading');
-
-    try {
-        await fn();
-    } finally {
-        _submitting = false;
-        if (btn) btn.classList.remove('btn--loading');
-    }
+    try { await fn(); }
+    finally { _submitting = false; if (btn) btn.classList.remove('btn--loading'); }
 }
 
-// ── CSRF Token Management ────────────────────────────────────
+// ── CSRF ─────────────────────────────────────────────────────
 let _csrfToken = null;
 
 async function getCsrfToken() {
@@ -39,19 +28,14 @@ async function getCsrfToken() {
     const res = await fetch('/api/csrf', { credentials: 'include' });
     if (!res.ok) throw new Error('Unable to fetch CSRF token');
     const data = await res.json();
-    if (typeof data.token !== 'string' || !data.token) {
-        throw new Error('Invalid CSRF token received from server');
-    }
+    if (typeof data.token !== 'string' || !data.token) throw new Error('Invalid CSRF token');
     _csrfToken = data.token;
     return _csrfToken;
 }
 
 async function secureHeaders() {
     const token = await getCsrfToken();
-    return {
-        'Content-Type': 'application/json',
-        'X-CSRF-Token': token
-    };
+    return { 'Content-Type': 'application/json', 'X-CSRF-Token': token };
 }
 
 async function secureFetch(url, options = {}, timeoutMs = 15000) {
@@ -60,39 +44,35 @@ async function secureFetch(url, options = {}, timeoutMs = 15000) {
     try {
         const headers = await secureHeaders();
         const res = await fetch(url, {
-            ...options,
-            credentials: 'include',
+            ...options, credentials: 'include',
             headers: { ...headers, ...(options.headers || {}) },
             signal: controller.signal
         });
         if (res.status === 403) {
             _csrfToken = null;
-            const retryController = new AbortController();
-            const retryTimeoutId  = setTimeout(() => retryController.abort(), timeoutMs);
+            const rc = new AbortController();
+            const rt = setTimeout(() => rc.abort(), timeoutMs);
             try {
-                const retryHeaders = await secureHeaders();
+                const rh = await secureHeaders();
                 return await fetch(url, {
-                    ...options,
-                    credentials: 'include',
-                    headers: { ...retryHeaders, ...(options.headers || {}) },
-                    signal: retryController.signal
+                    ...options, credentials: 'include',
+                    headers: { ...rh, ...(options.headers || {}) },
+                    signal: rc.signal
                 });
-            } finally {
-                clearTimeout(retryTimeoutId);
-            }
+            } finally { clearTimeout(rt); }
         }
         return res;
-    } finally {
-        clearTimeout(timeoutId);
-    }
+    } finally { clearTimeout(timeoutId); }
 }
 
 // ── UI Helpers ───────────────────────────────────────────────
+// FIX: style.display='' lets CSS classes control layout
+// (loading needs display:flex, others display:block)
 function updateStatus(type, msg) {
     const box = document.getElementById('status-box');
     if (!box) return;
-    box.className = 'status-box';
-    box.style.display = ''; // let CSS classes control display (flex for loading, block for others)
+    box.className  = 'status-box';
+    box.style.display = '';          // let CSS handle it
     if (type === 'danger')       box.classList.add('danger');
     else if (type === 'success') box.classList.add('success');
     else if (type === 'warning') box.classList.add('warning');
@@ -103,55 +83,32 @@ function updateStatus(type, msg) {
 // ── Device Fingerprint ───────────────────────────────────────
 function getSecureFp() {
     try {
-        let storedId = localStorage.getItem('_device_fp');
-        if (!storedId) {
-            storedId = crypto.randomUUID();
-            localStorage.setItem('_device_fp', storedId);
-        }
-        return storedId;
+        let id = localStorage.getItem('_device_fp');
+        if (!id) { id = crypto.randomUUID(); localStorage.setItem('_device_fp', id); }
+        return id;
     } catch {
         try {
-            const hardware = [
-                screen.width + 'x' + screen.height,
-                navigator.hardwareConcurrency || 0,
-                navigator.language || ''
-            ].join('|');
-            return btoa(encodeURIComponent(hardware)).substring(0, 128);
-        } catch {
-            return crypto.randomUUID();
-        }
+            const h = [screen.width + 'x' + screen.height, navigator.hardwareConcurrency || 0, navigator.language || ''].join('|');
+            return btoa(encodeURIComponent(h)).substring(0, 128);
+        } catch { return crypto.randomUUID(); }
     }
 }
 
 // ── Validation ───────────────────────────────────────────────
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 function validateEmail(email) {
-    if (!email || !EMAIL_REGEX.test(email)) {
-        return 'Please enter a valid email address.';
-    }
-    return null;
+    return (!email || !EMAIL_REGEX.test(email)) ? 'Please enter a valid email address.' : null;
 }
-
 function validatePassword(password) {
-    const passRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
-    if (password && !passRegex.test(password)) {
-        return 'Password must be at least 8 characters with uppercase, lowercase, a number, and a symbol.';
-    }
-    return null;
+    const r = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+    return (password && !r.test(password))
+        ? 'Password must be 8+ characters with uppercase, lowercase, a number, and a symbol.'
+        : null;
 }
-
 function validateInputs(username, password) {
-    const userRegex = /^[a-zA-Z0-9]+$/;
-    if (username && username.length > 32) {
-        return 'Username must be 32 characters or fewer.';
-    }
-    if (password && password.length > 128) {
-        return 'Password must be 128 characters or fewer.';
-    }
-    if (username && !userRegex.test(username)) {
-        return 'Username may only contain letters and numbers.';
-    }
+    if (username && username.length > 32)  return 'Username must be 32 characters or fewer.';
+    if (password && password.length > 128) return 'Password must be 128 characters or fewer.';
+    if (username && !/^[a-zA-Z0-9]+$/.test(username)) return 'Username may only contain letters and numbers.';
     return validatePassword(password);
 }
 
@@ -163,11 +120,9 @@ const PASSWORD_RULES = [
     { id: 'rule-number',  test: p => /\d/.test(p),        label: 'Number (0–9)' },
     { id: 'rule-special', test: p => /[@$!%*?&]/.test(p), label: 'Symbol (@$!%*?&)' },
 ];
-
 function checkPasswordStrength(password) {
     PASSWORD_RULES.forEach(({ id, test, label }) => {
-        const el   = document.getElementById(id);
-        if (!el) return;
+        const el = document.getElementById(id); if (!el) return;
         const icon = el.querySelector('.rule-icon');
         const pass = test(password);
         el.classList.toggle('pass', pass);
@@ -181,39 +136,29 @@ async function handleRegister() {
     const username = document.getElementById('username')?.value.trim();
     const email    = document.getElementById('email')?.value.trim();
     const password = document.getElementById('password')?.value;
-
-    if (!username || !email || !password) {
-        return updateStatus('danger', 'Please fill in all fields.');
-    }
-    const inputError = validateInputs(username, password);
-    if (inputError) return updateStatus('danger', inputError);
-
-    const emailError = validateEmail(email);
-    if (emailError) return updateStatus('danger', emailError);
-
+    if (!username || !email || !password) return updateStatus('danger', 'Please fill in all fields.');
+    const inputErr = validateInputs(username, password);
+    if (inputErr) return updateStatus('danger', inputErr);
+    const emailErr = validateEmail(email);
+    if (emailErr) return updateStatus('danger', emailErr);
     updateStatus('loading', 'Creating your account…');
     try {
-        const res  = await secureFetch('/api/auth', {
-            method: 'POST',
-            body: JSON.stringify({ action: 'register', username, email, password })
-        });
+        const res  = await secureFetch('/api/auth', { method: 'POST', body: JSON.stringify({ action: 'register', username, email, password }) });
         const data = await res.json();
         if (res.ok) {
             if (data.email_verification) {
-                updateStatus('success', '✅ Account created! Please check your email to verify your address before signing in.');
-                const form = document.getElementById('register-form') || document.querySelector('form');
+                updateStatus('success', '✅ Account created! Check your email to verify before signing in.');
+                const form = document.getElementById('register-form');
                 if (form) form.style.display = 'none';
             } else {
-                updateStatus('success', 'Account created! Redirecting to sign in…');
+                updateStatus('success', 'Account created! Redirecting…');
                 setTimeout(() => window.location.href = '/login', 1500);
             }
         } else {
-            updateStatus('danger', data.error || 'An error occurred. Please try again.');
+            updateStatus('danger', data.error || 'An error occurred. Please try again.');  // FIX: fallback
         }
     } catch (err) {
-        updateStatus('danger', err.name === 'AbortError'
-            ? 'Request timed out. Please try again.'
-            : 'Something went wrong. Please try again later.');
+        updateStatus('danger', err.name === 'AbortError' ? 'Request timed out. Please try again.' : 'Something went wrong. Please try again later.');
     }
 }
 
@@ -222,66 +167,33 @@ async function preLoginCheck() {
     const username = document.getElementById('username')?.value.trim();
     const password = document.getElementById('password')?.value;
     const remember = document.getElementById('remember-device')?.checked;
-
-    const urlParams = new URLSearchParams(window.location.search);
-    const redirect_back = urlParams.get('next') || urlParams.get('redirect_back');
-
-    if (!username || !password) {
-        return updateStatus('danger', 'Please enter your username and password.');
-    }
-
+    const redirect_back = new URLSearchParams(window.location.search).get('next') || new URLSearchParams(window.location.search).get('redirect_back');
+    if (!username || !password) return updateStatus('danger', 'Please enter your username and password.');
     updateStatus('loading', 'Verifying your credentials…');
     try {
         const fingerprint = getSecureFp();
         const device = `Screen:${screen.width}x${screen.height} | CPU:${navigator.hardwareConcurrency}`;
-
-        const riskRes  = await secureFetch('/api/assess', {
-            method: 'POST',
-            body: JSON.stringify({ username, device, fingerprint })
-        });
+        const riskRes  = await secureFetch('/api/assess', { method: 'POST', body: JSON.stringify({ username, device, fingerprint }) });
         const riskData = await riskRes.json();
-
-        if (riskData.risk_level === 'HIGH') {
-            startAccountLockdown(60);
-            return;
-        }
-        if (!riskRes.ok) {
-            return updateStatus('danger', 'Something went wrong. Please try again later.');
-        }
-        if (!riskData.logId) {
-            return updateStatus('danger', 'Incorrect username or password.');
-        }
-
+        if (riskData.risk_level === 'HIGH') { startAccountLockdown(60); return; }
+        if (!riskRes.ok) return updateStatus('danger', 'Something went wrong. Please try again later.');
+        if (!riskData.logId) return updateStatus('danger', 'Incorrect username or password.');
         const logIdNum = Number(riskData.logId);
-        if (!Number.isInteger(logIdNum) || logIdNum <= 0) {
-            return updateStatus('danger', 'Incorrect username or password.');
-        }
+        if (!Number.isInteger(logIdNum) || logIdNum <= 0) return updateStatus('danger', 'Incorrect username or password.');
         const safeLogId = String(logIdNum);
-
-        const authRes  = await secureFetch('/api/auth', {
-            method: 'POST',
-            body: JSON.stringify({
-                action: 'login', username, password, fingerprint,
-                logId: safeLogId, remember, redirect_back
-            })
-        });
+        const authRes  = await secureFetch('/api/auth', { method: 'POST', body: JSON.stringify({ action: 'login', username, password, fingerprint, logId: safeLogId, remember, redirect_back }) });
         const authData = await authRes.json();
-
         if (authRes.ok) {
             if (authData.mfa_required) {
                 const mfaMessage = authData.email_pending
                     ? 'New device detected. If you don\'t receive the email within 1 minute, click "Resend Code".'
                     : 'Please enter the verification code sent to your email.';
                 updateStatus('success', mfaMessage);
-
-                sessionStorage.setItem('mfa_logId',       safeLogId);
-                sessionStorage.setItem('mfa_username',    username);
-                sessionStorage.setItem('mfa_remember',    String(remember));
+                sessionStorage.setItem('mfa_logId', safeLogId);
+                sessionStorage.setItem('mfa_username', username);
+                sessionStorage.setItem('mfa_remember', String(remember));
                 sessionStorage.setItem('mfa_fingerprint', fingerprint);
-
-                if (redirect_back) {
-                    sessionStorage.setItem('mfa_redirect_back', redirect_back);
-                }
+                if (redirect_back) sessionStorage.setItem('mfa_redirect_back', redirect_back);
                 setTimeout(() => window.location.href = '/mfa', 1500);
             } else {
                 updateStatus('success', 'Signed in successfully. Redirecting…');
@@ -291,17 +203,15 @@ async function preLoginCheck() {
             if (authData.email_not_verified) {
                 updateStatus('warning', '📧 Please verify your email before signing in. Check your inbox (or spam folder).');
             } else {
-                updateStatus('danger', authData.error);
+                updateStatus('danger', authData.error || 'Incorrect username or password.');
             }
         }
     } catch (err) {
-        updateStatus('danger', err.name === 'AbortError'
-            ? 'Request timed out. Please try again.'
-            : 'Something went wrong. Please try again later.');
+        updateStatus('danger', err.name === 'AbortError' ? 'Request timed out. Please try again.' : 'Something went wrong. Please try again later.');
     }
 }
 
-// ── MFA Verify ───────────────────────────────────────────────
+// ── MFA ───────────────────────────────────────────────────────
 async function verifyMFA() {
     const code        = document.getElementById('mfa-code')?.value.trim();
     const logId       = sessionStorage.getItem('mfa_logId');
@@ -309,241 +219,149 @@ async function verifyMFA() {
     const username    = sessionStorage.getItem('mfa_username');
     const fingerprint = sessionStorage.getItem('mfa_fingerprint');
     const redirect_back = sessionStorage.getItem('mfa_redirect_back');
-
-    if (!code || !logId || !username) {
-        return updateStatus('danger', 'Session data missing. Please sign in again.');
-    }
-
+    if (!code || !logId || !username) return updateStatus('danger', 'Session data missing. Please sign in again.');
     updateStatus('loading', 'Verifying your code…');
     try {
-        const res = await secureFetch('/api/mfa', {
-            method: 'POST',
-            body: JSON.stringify({ action: 'verify', logId, code, remember: remember === 'true', username, fingerprint, redirect_back })
-        });
-
+        const res = await secureFetch('/api/mfa', { method: 'POST', body: JSON.stringify({ action: 'verify', logId, code, remember: remember === 'true', username, fingerprint, redirect_back }) });
         if (res.ok) {
             const data = await res.json();
-            sessionStorage.removeItem('mfa_logId');
-            sessionStorage.removeItem('mfa_username');
-            sessionStorage.removeItem('mfa_remember');
-            sessionStorage.removeItem('mfa_fingerprint');
-            sessionStorage.removeItem('mfa_redirect_back');
+            ['mfa_logId','mfa_username','mfa_remember','mfa_fingerprint','mfa_redirect_back'].forEach(k => sessionStorage.removeItem(k));
             updateStatus('success', 'Identity verified. Redirecting…');
             setTimeout(() => window.location.href = data.redirectUrl || '/welcome', 1000);
         } else {
             const data = await res.json();
-            updateStatus('danger', data.error);
+            updateStatus('danger', data.error || 'Invalid code. Please try again.');
         }
     } catch (err) {
-        updateStatus('danger', err.name === 'AbortError'
-            ? 'Request timed out. Please try again.'
-            : 'Something went wrong.');
+        updateStatus('danger', err.name === 'AbortError' ? 'Request timed out.' : 'Something went wrong.');
     }
 }
 
-// ── Resend MFA ───────────────────────────────────────────────
 async function resendMFA() {
     if (resendCooldown > 0) return;
-
     const logId    = sessionStorage.getItem('mfa_logId');
     const username = sessionStorage.getItem('mfa_username');
-
     updateStatus('loading', 'Sending a new code…');
     try {
-        const res  = await secureFetch('/api/mfa', {
-            method: 'POST',
-            body: JSON.stringify({ action: 'resend', logId, username })
-        });
+        const res  = await secureFetch('/api/mfa', { method: 'POST', body: JSON.stringify({ action: 'resend', logId, username }) });
         const data = await res.json();
-        if (res.ok) {
-            startResendCooldown(60);
-            updateStatus('success', 'A new code has been sent. Please check your email.');
-        } else {
-            updateStatus('danger', data.error);
-        }
+        if (res.ok) { startResendCooldown(60); updateStatus('success', 'A new code has been sent. Check your email.'); }
+        else updateStatus('danger', data.error || 'Failed to resend. Please try again.');
     } catch (err) {
-        updateStatus('danger', err.name === 'AbortError'
-            ? 'Request timed out. Please try again.'
-            : 'Something went wrong.');
+        updateStatus('danger', err.name === 'AbortError' ? 'Request timed out.' : 'Something went wrong.');
     }
 }
 
 function startResendCooldown(seconds) {
-    const resendBtn = document.getElementById('resend-btn');
-    if (!resendBtn) return;
-
+    const btn = document.getElementById('resend-btn');
+    if (!btn) return;
     resendCooldown = seconds;
-    resendBtn.disabled = true;
-
+    btn.disabled = true;
     clearInterval(resendTimerInterval);
     resendTimerInterval = setInterval(() => {
-        if (resendCooldown <= 0) {
-            clearInterval(resendTimerInterval);
-            resendBtn.disabled = false;
-            resendBtn.textContent = 'Resend Code';
-            return;
-        }
-        resendBtn.textContent = `Resend Code (${resendCooldown}s)`;
+        if (resendCooldown <= 0) { clearInterval(resendTimerInterval); btn.disabled = false; btn.textContent = 'Resend Code'; return; }
+        btn.textContent = `Resend (${resendCooldown}s)`;
         resendCooldown--;
     }, 1000);
 }
 
-// ── Account Lockdown ─────────────────────────────────────────
+// FIX: show message immediately before interval fires
 function startAccountLockdown(seconds) {
-    const btn     = document.getElementById('login-btn');
+    const btn = document.getElementById('login-btn');
     let remaining = seconds;
-
     if (btn) btn.disabled = true;
-
-    // Show message immediately so the user isn't left on "Verifying…" for a full second
-    updateStatus('danger', `🚨 Account temporarily locked. Please wait ${remaining} seconds.`);
+    updateStatus('danger', `🔒 Account temporarily locked. Please wait ${remaining} seconds.`);
     remaining--;
-
     clearInterval(countdownTimer);
     countdownTimer = setInterval(() => {
-        if (remaining <= 0) {
-            clearInterval(countdownTimer);
-            if (btn) btn.disabled = false;
-            updateStatus('success', 'Lockout period ended. You may try again.');
-            return;
-        }
-        updateStatus('danger', `🚨 Account temporarily locked. Please wait ${remaining} seconds.`);
+        if (remaining <= 0) { clearInterval(countdownTimer); if (btn) btn.disabled = false; updateStatus('success', 'Lockout period ended. You may try again.'); return; }
+        updateStatus('danger', `🔒 Account temporarily locked. Please wait ${remaining} seconds.`);
         remaining--;
     }, 1000);
 }
 
-// ── Forgot Password ───────────────────────────────────────────
+// ── Forgot / Reset Password ───────────────────────────────────
 async function requestPasswordReset() {
     const email = document.getElementById('reset-email')?.value.trim();
     if (!email) return updateStatus('danger', 'Please enter your email address.');
-
-    const emailError = validateEmail(email);
-    if (emailError) return updateStatus('danger', emailError);
-
+    const err = validateEmail(email);
+    if (err) return updateStatus('danger', err);
     updateStatus('loading', 'Sending reset link…');
     try {
-        const res  = await secureFetch('/api/password', {
-            method: 'POST',
-            body: JSON.stringify({ action: 'forgot', email })
-        });
+        const res  = await secureFetch('/api/password', { method: 'POST', body: JSON.stringify({ action: 'forgot', email }) });
         const data = await res.json();
-        if (res.ok) {
-            updateStatus('success', data.message);
-        } else {
-            updateStatus('danger', data.error || 'An error occurred. Please try again.');
-        }
+        if (res.ok) updateStatus('success', data.message || 'Reset link sent. Check your email.');
+        else updateStatus('danger', data.error || 'An error occurred. Please try again.');
     } catch (err) {
-        updateStatus('danger', err.name === 'AbortError'
-            ? 'Request timed out. Please try again.'
-            : 'Something went wrong.');
+        updateStatus('danger', err.name === 'AbortError' ? 'Request timed out.' : 'Something went wrong.');
     }
 }
 
-// ── Reset Password ────────────────────────────────────────────
 async function executePasswordReset() {
     const newPassword     = document.getElementById('new-password')?.value;
     const confirmPassword = document.getElementById('confirm-password')?.value;
-
-    if (!newPassword || !confirmPassword) {
-        return updateStatus('danger', 'Please fill in both password fields.');
-    }
-    if (newPassword !== confirmPassword) {
-        return updateStatus('danger', 'Passwords do not match.');
-    }
-    const error = validatePassword(newPassword);
-    if (error) return updateStatus('danger', error);
-
+    if (!newPassword || !confirmPassword) return updateStatus('danger', 'Please fill in both password fields.');
+    if (newPassword !== confirmPassword)   return updateStatus('danger', 'Passwords do not match.');
+    const err = validatePassword(newPassword);
+    if (err) return updateStatus('danger', err);
     const token = new URLSearchParams(window.location.search).get('token');
-    if (!token) {
-        return updateStatus('danger', 'Invalid link. Please request a new reset link.');
-    }
-
+    if (!token) return updateStatus('danger', 'Invalid link. Please request a new reset link.');
     updateStatus('loading', 'Saving your new password…');
     try {
-        const res  = await secureFetch('/api/password', {
-            method: 'POST',
-            body: JSON.stringify({ action: 'reset', token, password: newPassword })
-        });
+        const res  = await secureFetch('/api/password', { method: 'POST', body: JSON.stringify({ action: 'reset', token, password: newPassword }) });
         const data = await res.json();
-        if (res.ok) {
-            updateStatus('success', 'Password updated. Redirecting to sign in…');
-            setTimeout(() => window.location.href = '/login', 2000);
-        } else {
-            updateStatus('danger', data.error || 'An error occurred. Please try again.');
-        }
+        if (res.ok) { updateStatus('success', 'Password updated. Redirecting to sign in…'); setTimeout(() => window.location.href = '/login', 2000); }
+        else updateStatus('danger', data.error || 'An error occurred. Please try again.');  // FIX: fallback
     } catch (err) {
-        updateStatus('danger', err.name === 'AbortError'
-            ? 'Request timed out. Please try again.'
-            : 'Something went wrong.');
+        updateStatus('danger', err.name === 'AbortError' ? 'Request timed out.' : 'Something went wrong.');
     }
 }
 
-// ── Session Check (welcome.html) ──────────────────────────────
+// ── Session Check ─────────────────────────────────────────────
 async function checkAuth() {
     try {
         const controller = new AbortController();
         const timeoutId  = setTimeout(() => controller.abort(), 15000);
         let res;
-        try {
-            res = await fetch('/api/session', { credentials: 'include', signal: controller.signal });
-        } finally {
-            clearTimeout(timeoutId);
-        }
+        try { res = await fetch('/api/session', { credentials: 'include', signal: controller.signal }); }
+        finally { clearTimeout(timeoutId); }
         if (!res.ok) { window.location.replace('/login'); return; }
-
         const data = await res.json();
         if (!data.authenticated) { window.location.replace('/login'); return; }
-
-        const userDisplay = document.getElementById('user-display');
-        if (userDisplay && typeof data.user === 'string' && data.user) {
-            userDisplay.textContent = data.user;
-        }
+        const el = document.getElementById('user-display');
+        if (el && typeof data.user === 'string' && data.user) el.textContent = data.user;
         document.body.classList.remove('auth-pending');
-    } catch {
-        window.location.replace('/login');
-    }
+    } catch { window.location.replace('/login'); }
 }
 
 async function logout() {
-    try {
-        await secureFetch('/api/logout', { method: 'POST' });
-    } catch { /* ignore */ }
+    try { await secureFetch('/api/logout', { method: 'POST' }); } catch {}
     window.location.replace('/login');
 }
 
 // ── DOMContentLoaded ──────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+    if (document.getElementById('user-display')) checkAuth();
 
-    if (document.getElementById('user-display')) {
-        checkAuth();
-    }
+    document.getElementById('logout-btn')     ?.addEventListener('click', e => withGuard(logout, e));
+    document.getElementById('dev-portal-btn') ?.addEventListener('click', () => { window.location.href = '/developer'; });
 
-    document.getElementById('logout-btn')
-        ?.addEventListener('click', e => withGuard(logout, e));
-
-    document.getElementById('dev-portal-btn')
-        ?.addEventListener('click', () => { window.location.href = '/developer'; });
-
-    // Login page — show messages from query params
     if (document.getElementById('login-form')) {
         const qp = new URLSearchParams(window.location.search);
-        if (qp.get('verified') === '1') {
-            updateStatus('success', '✅ Email verified! You can now sign in.');
-        } else if (qp.get('error') === 'token_expired') {
-            updateStatus('warning', '⏰ Your verification link has expired. Please register again.');
-        } else if (qp.get('error') === 'invalid_token') {
-            updateStatus('danger', 'Invalid verification link. Please check your email again.');
-        }
+        if      (qp.get('verified') === '1')          updateStatus('success', '✅ Email verified! You can now sign in.');
+        else if (qp.get('error') === 'token_expired') updateStatus('warning', '⏰ Your verification link has expired. Please register again.');
+        else if (qp.get('error') === 'invalid_token') updateStatus('danger',  'Invalid verification link. Please check your email again.');
     }
 
-    document.getElementById('login-form')
-        ?.addEventListener('submit', e => { e.preventDefault(); withGuard(preLoginCheck, e); });
+    document.getElementById('login-form')    ?.addEventListener('submit', e => { e.preventDefault(); withGuard(preLoginCheck,       e); });
+    document.getElementById('register-form') ?.addEventListener('submit', e => { e.preventDefault(); withGuard(handleRegister,       e); });
+    document.getElementById('mfa-form')      ?.addEventListener('submit', e => { e.preventDefault(); withGuard(verifyMFA,            e); });
+    document.getElementById('forgot-form')   ?.addEventListener('submit', e => { e.preventDefault(); withGuard(requestPasswordReset, e); });
+    document.getElementById('reset-form')    ?.addEventListener('submit', e => { e.preventDefault(); withGuard(executePasswordReset,  e); });
 
-    document.getElementById('register-form')
-        ?.addEventListener('submit', e => { e.preventDefault(); withGuard(handleRegister, e); });
-
-    document.getElementById('password')
-        ?.addEventListener('input', e => checkPasswordStrength(e.target.value));
+    document.getElementById('password')     ?.addEventListener('input', e => checkPasswordStrength(e.target.value));
+    document.getElementById('new-password') ?.addEventListener('input', e => checkPasswordStrength(e.target.value));
+    document.getElementById('resend-btn')   ?.addEventListener('click', e => withGuard(resendMFA, e));
 
     if (document.getElementById('mfa-code')) {
         if (!sessionStorage.getItem('mfa_logId') || !sessionStorage.getItem('mfa_username')) {
@@ -551,19 +369,4 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
     }
-
-    document.getElementById('mfa-form')
-        ?.addEventListener('submit', e => { e.preventDefault(); withGuard(verifyMFA, e); });
-
-    document.getElementById('resend-btn')
-        ?.addEventListener('click', e => withGuard(resendMFA, e));
-
-    document.getElementById('forgot-form')
-        ?.addEventListener('submit', e => { e.preventDefault(); withGuard(requestPasswordReset, e); });
-
-    document.getElementById('reset-form')
-        ?.addEventListener('submit', e => { e.preventDefault(); withGuard(executePasswordReset, e); });
-
-    document.getElementById('new-password')
-        ?.addEventListener('input', e => checkPasswordStrength(e.target.value));
 });

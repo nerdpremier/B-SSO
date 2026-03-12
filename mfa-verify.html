@@ -8,83 +8,54 @@
   <title>Verify Identity — CARS SSO</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <div class="split-layout">
+  <div class="auth-layout">
+    <div class="auth-card">
 
-    <!-- ── Brand panel ── -->
-    <aside class="brand-panel" aria-hidden="true">
-      <div class="brand-glow-a"></div>
-      <div class="brand-glow-b"></div>
+      <div class="brand-row" data-stagger>
+        <div class="brand-logo" aria-hidden="true">🚗</div>
+        <span class="brand-name">CARS SSO</span>
+      </div>
 
-      <div class="brand-top">
-        <div class="brand-wordmark">
-          <div class="brand-icon">🚗</div>
-          <span class="brand-name-text">CARS SSO</span>
+      <span class="page-icon" aria-hidden="true" data-stagger>🛡️</span>
+      <h1 class="page-title" data-stagger>Check your <em>email</em></h1>
+      <p class="page-subtitle" data-stagger>Enter the 6-digit code we sent to your email address</p>
+
+      <div id="status-box" class="status-box" role="alert" aria-live="assertive" aria-atomic="true" data-stagger></div>
+
+      <form id="mfa-form" novalidate data-stagger>
+        <div class="field">
+          <label for="mfa-code">Verification Code</label>
+          <input type="text" id="mfa-code" name="mfa-code"
+            class="mfa-input"
+            placeholder="000000"
+            inputmode="numeric"
+            autocomplete="one-time-code"
+            pattern="[0-9]{6}"
+            minlength="6" maxlength="6"
+            required aria-required="true" aria-describedby="status-box">
         </div>
-        <h2 class="brand-headline">Two-factor<br><em>authentication.</em></h2>
-        <p class="brand-description">
-          An extra layer of security to keep your account safe.
-          Enter the 6-digit code sent to your email to continue.
+
+        <button type="submit" id="mfa-verify-btn" class="btn-primary">Verify Code</button>
+      </form>
+
+      <div class="footer-link" style="text-align:center; margin-top:18px;" data-stagger>
+        <p style="font-size:13.5px; color:var(--ink-2); margin-bottom:8px;">
+          Didn&apos;t receive a code?
+          <button type="button" id="resend-btn"
+            style="background:none; border:none; color:var(--gold); font-weight:600; font-size:13.5px; cursor:pointer; padding:0; font-family:var(--font); transition:color .15s;"
+            onmouseover="this.style.color='var(--gold-l)'" onmouseout="this.style.color='var(--gold)'">
+            Resend Code
+          </button>
         </p>
+        <a href="/login" style="font-size:13px; color:var(--ink-3);">Cancel and return to sign in</a>
       </div>
 
-      <div class="brand-bottom">
-        <div class="brand-badges">
-          <div class="brand-badge"><div class="badge-dot"></div>Code expires in 5 min</div>
-          <div class="brand-badge"><div class="badge-dot"></div>Secure channel</div>
-        </div>
-      </div>
-    </aside>
-
-    <!-- ── Form panel ── -->
-    <main class="form-panel">
-      <div class="form-container">
-        <div class="form-card">
-
-          <div class="form-icon" aria-hidden="true">🛡️</div>
-          <h1 class="form-title">Check your email</h1>
-          <p class="form-subtitle">Enter the 6-digit code sent to your email address</p>
-
-          <div id="status-box" class="status-box" role="alert" aria-live="assertive" aria-atomic="true"></div>
-
-          <form id="mfa-form" novalidate>
-            <div class="field">
-              <label for="mfa-code">Verification Code</label>
-              <div class="input-wrap">
-                <input type="text" id="mfa-code" name="mfa-code"
-                  class="mfa-input"
-                  placeholder="000000"
-                  inputmode="numeric"
-                  autocomplete="one-time-code"
-                  pattern="[0-9]{6}"
-                  minlength="6" maxlength="6"
-                  required aria-required="true" aria-describedby="status-box">
-              </div>
-            </div>
-
-            <button type="submit" id="mfa-verify-btn" class="btn-primary">Verify Code</button>
-          </form>
-
-          <div class="footer-link" style="text-align:center; margin-top:16px;">
-            <p style="font-size:13.5px; color:var(--muted);">
-              Didn&apos;t receive a code?
-              <button type="button" id="resend-btn" class="btn-link"
-                style="background:none; border:none; color:var(--accent); font-weight:600; font-size:13.5px; cursor:pointer; padding:0; font-family:var(--font);">
-                Resend Code
-              </button>
-            </p>
-            <a href="/login" style="font-size:13px; color:var(--dim);">Cancel and return to sign in</a>
-          </div>
-
-        </div>
-      </div>
-    </main>
-
+    </div>
   </div>
-
   <script src="/effects.js"></script>
   <script src="/script.js"></script>
 </body>

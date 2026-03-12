@@ -9,8 +9,9 @@ const $id = id => document.getElementById(id);
 function showStatus(msg, type = 'danger') {
   const el = $id('status-msg');
   if (!el) return;
-  el.textContent = msg;
-  el.className = `status-box ${type}`;
+  el.textContent    = msg;
+  el.className      = `status-box ${type}`;
+  el.style.display  = '';   // let CSS handle display mode
 }
 
 function setSubmitting(on) {
@@ -100,7 +101,6 @@ async function handleAllow() {
       })
     });
     const data = await res.json();
-
     if (!res.ok) {
       if (res.status === 401) {
         window.location.replace(`/login?next=${encodeURIComponent(window.location.href)}`);
@@ -119,6 +119,7 @@ async function handleAllow() {
   }
 }
 
+// FIX: guard against _oauthParams being empty if init hasn't populated it yet
 function handleDeny() {
   if (_isSubmitting) return;
   if (!_oauthParams.redirectUri || !_oauthParams.state) {

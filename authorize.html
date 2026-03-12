@@ -8,172 +8,137 @@
   <title>Authorize Access — CARS SSO</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
   <style>
-    /* Authorize-specific styles */
-    .auth-card { text-align: center; max-width: 440px; }
+    .consent-card { max-width: 440px; text-align: center; }
 
-    .auth-logo-row {
+    /* App connector row */
+    .app-connector {
       display: flex; align-items: center; justify-content: center;
-      gap: 12px; margin-bottom: 20px;
+      gap: 14px; margin-bottom: 22px;
     }
-    .auth-logo-cars {
-      width: 44px; height: 44px;
-      background: var(--navy);
+    .app-icon-cars {
+      width: 46px; height: 46px;
+      background: var(--gold-bg);
+      border: 1px solid var(--gold-bd);
       border-radius: 13px;
       display: flex; align-items: center; justify-content: center;
       font-size: 20px; flex-shrink: 0;
     }
-    .auth-logo-arrow {
-      color: var(--dim); font-size: 18px; font-weight: 400;
+    .app-connector-arrow {
+      color: var(--ink-3); font-size: 16px; letter-spacing: 2px;
     }
-    .auth-logo-app {
-      width: 44px; height: 44px;
-      background: var(--accent-l);
-      border: 2px solid rgba(79,110,247,.25);
+    .app-icon-ext {
+      width: 46px; height: 46px;
+      background: var(--surface-2);
+      border: 1px solid var(--border-h);
       border-radius: 13px;
       display: flex; align-items: center; justify-content: center;
       font-size: 20px; flex-shrink: 0;
     }
 
+    /* App badge */
     .app-badge {
       display: inline-flex; align-items: center; gap: 6px;
-      background: var(--accent-l);
-      border: 1.5px solid rgba(79,110,247,.22);
+      background: var(--gold-bg);
+      border: 1px solid var(--gold-bd);
       border-radius: 20px;
       padding: 4px 12px;
-      font-size: 12px; font-weight: 700; color: var(--accent-d);
-      margin-bottom: 12px;
+      font-size: 11.5px; font-weight: 700; color: var(--gold);
+      margin-bottom: 14px;
     }
-    .app-badge-dot {
-      width: 5px; height: 5px; border-radius: 50%;
-      background: var(--accent);
-    }
+    .app-badge-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--gold); }
 
-    .auth-title {
-      font-family: var(--font-head);
-      font-size: 22px; font-weight: 800;
-      color: var(--ink); letter-spacing: -.35px;
-      margin-bottom: 4px;
+    /* Permissions box */
+    .permission-box {
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 4px 0;
+      margin: 18px 0 14px;
+      text-align: left;
     }
-    .auth-subtitle {
-      font-size: 14px; color: var(--muted);
-      margin-bottom: 20px;
+    .permission-item {
+      display: flex; align-items: center; gap: 13px;
+      padding: 13px 16px;
+      border-bottom: 1px solid var(--border);
     }
+    .permission-item:last-child { border-bottom: none; }
+    .permission-icon { font-size: 18px; flex-shrink: 0; }
+    .permission-name { font-size: 13.5px; font-weight: 600; color: var(--ink); margin-bottom: 2px; }
+    .permission-desc { font-size: 12px; color: var(--ink-3); }
 
+    .scope-note { font-size: 12px; color: var(--ink-3); margin-bottom: 20px; }
+
+    /* User chip */
     .user-chip {
-      display: inline-flex; align-items: center; gap: 6px;
-      background: var(--bg);
-      border: 1.5px solid var(--border);
+      display: inline-flex; align-items: center; gap: 7px;
+      background: var(--surface-2);
+      border: 1px solid var(--border-h);
       border-radius: 20px;
-      padding: 5px 12px;
+      padding: 5px 13px;
       font-size: 12.5px; font-weight: 600; color: var(--ink-2);
       margin-bottom: 20px;
     }
     .user-chip-dot {
       width: 6px; height: 6px; border-radius: 50%;
       background: var(--ok);
-      box-shadow: 0 0 4px var(--ok);
+      box-shadow: 0 0 5px var(--ok);
     }
 
-    .permission-box {
-      background: var(--bg);
-      border: 1.5px solid var(--border);
-      border-radius: 12px;
-      padding: 4px 0;
-      margin-bottom: 14px;
-      text-align: left;
-    }
-    .permission-item {
-      display: flex; align-items: center; gap: 12px;
-      padding: 12px 16px;
-      border-bottom: 1px solid var(--border);
-    }
-    .permission-item:last-child { border-bottom: none; }
-    .permission-icon {
-      font-size: 18px; flex-shrink: 0;
-    }
-    .permission-name {
-      font-size: 13.5px; font-weight: 700; color: var(--ink-2);
-      margin-bottom: 2px;
-    }
-    .permission-desc {
-      font-size: 12px; color: var(--muted);
-    }
-
-    .scope-note {
-      font-size: 12px; color: var(--dim);
-      margin-bottom: 20px;
-    }
-
+    /* Deny button */
     .btn-deny {
       display: block; width: 100%;
       padding: 12px 20px;
       background: transparent;
-      border: 1.5px solid var(--border); border-radius: var(--radius-btn);
-      color: var(--muted);
-      font-family: var(--font); font-size: 14.5px; font-weight: 700;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-btn);
+      color: var(--ink-3);
+      font-family: var(--font); font-size: 14px; font-weight: 600;
       cursor: pointer; text-align: center;
-      transition: border-color .18s, color .18s, background .18s;
-      margin-top: 8px;
+      transition: border-color .2s, color .2s, background .2s;
+      margin-top: 10px;
     }
-    .btn-deny:hover {
-      border-color: var(--err-bd); color: var(--err); background: var(--err-bg);
-    }
-    .btn-deny:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(224,57,62,.18); }
+    .btn-deny:hover { border-color: var(--err-bd); color: var(--err); background: var(--err-bg); }
+    .btn-deny:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(255,85,85,.2); }
 
-    /* Loading overlay */
-    .loading-overlay {
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      gap: 14px; padding: 20px 0;
+    /* Loading state */
+    .loading-state {
+      display: flex; flex-direction: column; align-items: center;
+      gap: 16px; padding: 30px 0;
     }
     .spinner {
       width: 32px; height: 32px;
-      border: 3px solid var(--border);
-      border-top-color: var(--accent);
+      border: 2.5px solid var(--border);
+      border-top-color: var(--gold);
       border-radius: 50%;
-      animation: spin .65s linear infinite;
+      animation: spin .7s linear infinite;
     }
-    .loading-text { font-size: 14px; color: var(--muted); font-weight: 500; }
+    .loading-text { font-size: 13.5px; color: var(--ink-3); }
 
-    /* Error state */
-    #error-ui .status-box { display: block; }
-    #error-ui h1 {
-      font-family: var(--font-head);
-      font-size: 22px; font-weight: 800; color: var(--ink);
-      letter-spacing: -.35px; margin-bottom: 14px;
-    }
-
-    .footer-signed {
-      margin-top: 18px;
-      font-size: 12px; color: var(--dim); text-align: center;
-    }
-    .footer-signed strong { color: var(--muted); font-weight: 600; }
-    .footer-signed a {
-      color: var(--accent); font-weight: 600; text-decoration: none;
-    }
+    .footer-signed { margin-top: 20px; font-size: 12px; color: var(--ink-3); }
+    .footer-signed strong { color: var(--ink-2); font-weight: 600; }
+    .footer-signed a { color: var(--gold); font-weight: 600; text-decoration: none; }
     .footer-signed a:hover { text-decoration: underline; }
   </style>
 </head>
 <body class="auth-pending">
-  <div class="center-layout">
+  <div class="auth-layout">
+    <div class="auth-card consent-card" id="main-card" style="display:none;">
 
-    <div class="center-card auth-card" id="main-card" style="display:none;">
-
-      <!-- Loading state -->
-      <div id="loading-overlay" class="loading-overlay">
+      <!-- Loading -->
+      <div id="loading-overlay" class="loading-state">
         <div class="spinner" aria-hidden="true"></div>
         <p class="loading-text">Verifying request…</p>
       </div>
 
       <!-- Consent UI -->
       <div id="consent-ui" style="display:none;">
-        <div class="auth-logo-row">
-          <div class="auth-logo-cars" aria-hidden="true">🚗</div>
-          <div class="auth-logo-arrow" aria-hidden="true">⟷</div>
-          <div class="auth-logo-app" aria-hidden="true">🔗</div>
+        <div class="app-connector" aria-hidden="true">
+          <div class="app-icon-cars">🚗</div>
+          <div class="app-connector-arrow">⟷</div>
+          <div class="app-icon-ext">🔗</div>
         </div>
 
         <div class="app-badge">
@@ -181,8 +146,8 @@
           <span id="app-badge-name">Application</span>
         </div>
 
-        <h1 class="auth-title">Authorize access</h1>
-        <p class="auth-subtitle" id="consent-subtitle">Loading…</p>
+        <h1 class="page-title" style="margin-bottom:6px;">Authorize <em>access</em></h1>
+        <p class="page-subtitle" id="consent-subtitle" style="margin-bottom:0;">Loading…</p>
 
         <div class="user-chip" id="user-chip" style="display:none;">
           <div class="user-chip-dot" aria-hidden="true"></div>
@@ -220,18 +185,17 @@
       </div>
 
       <!-- Error state -->
-      <div id="error-ui" style="display:none;">
-        <div style="font-size:40px; margin-bottom:14px;" aria-hidden="true">⚠️</div>
-        <h1>Something went wrong</h1>
-        <div id="error-msg" class="status-box danger" role="alert" style="display:block;">
+      <div id="error-ui" style="display:none; text-align:center;">
+        <div style="font-size:36px; margin-bottom:16px;" aria-hidden="true">⚠️</div>
+        <h1 class="page-title">Something went <em>wrong</em></h1>
+        <div id="error-msg" class="status-box danger" role="alert" style="display:block; text-align:left;">
           Unable to load authorization data
         </div>
-        <p style="font-size:14px; color:var(--muted);">Please contact the application owner.</p>
+        <p style="font-size:13.5px; color:var(--ink-3);">Please contact the application owner.</p>
       </div>
 
     </div>
   </div>
-
   <script src="/effects.js"></script>
   <script src="/authorize.js"></script>
 </body>
