@@ -28,14 +28,14 @@ export default async function handler(req, res) {
     }
 
     if (!validateCsrfToken(req)) {
-        return res.status(403).json({ error: 'CSRF token ไม่ถูกต้อง' });
+        return res.status(403).json({ error: 'Invalid CSRF token' });
     }
 
     const ip = getClientIp(req);
     try {
         if (await checkRateLimit(`ip:${ip}:logout`, 20, 60_000)) {
             auditLog('LOGOUT_RATE_LIMIT', { ip });
-            return res.status(429).json({ error: 'ส่งคำขอบ่อยเกินไป กรุณารอสักครู่' });
+            return res.status(429).json({ error: 'Too many requests. Please try again later.' });
         }
     } catch (rlErr) {
         console.error('[WARN] rate-limit DB error (logout), failing open:', rlErr.message);

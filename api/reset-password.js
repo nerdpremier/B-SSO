@@ -24,36 +24,36 @@ export default async function handler(req, res) {
     }
 
     if (!validateCsrfToken(req)) {
-        return res.status(403).json({ error: 'CSRF token ไม่ถูกต้อง' });
+        return res.status(403).json({ error: 'Invalid CSRF token' });
     }
 
     const ip = getClientIp(req);
     try {
         if (await checkRateLimit(`ip:${ip}:reset-password`, 10, 3_600_000)) {
             auditLog('RESET_PASSWORD_IP_RATE_LIMIT', { ip });
-            return res.status(429).json({ error: 'ส่งคำขอบ่อยเกินไป กรุณารอสักครู่' });
+            return res.status(429).json({ error: 'Too many requests. Please try again later.' });
         }
     } catch (rlErr) {
         console.error('[WARN] rate-limit DB error (reset-password), failing open:', rlErr.message);
     }
 
     if (!isValidBody(req.body)) {
-        return res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' });
+        return res.status(400).json({ error: 'Invalid request data' });
     }
 
     const { token, password } = req.body;
 
     if (typeof token !== 'string' || !TOKEN_REGEX.test(token)) {
-        return res.status(400).json({ error: 'Token ไม่ถูกต้อง' });
+        return res.status(400).json({ error: 'Invalid reset token' });
     }
     if (typeof password !== 'string' || !password) {
-        return res.status(400).json({ error: 'กรุณาระบุรหัสผ่านใหม่' });
+        return res.status(400).json({ error: 'Please enter a new password' });
     }
     if (password.length > 128) {
-        return res.status(400).json({ error: 'รหัสผ่านยาวเกินกำหนด' });
+        return res.status(400).json({ error: 'Password is too long (max 128 characters)' });
     }
     if (!PASS_REGEX.test(password)) {
-        return res.status(400).json({ error: 'รหัสผ่านต้องมี 8 ตัวอักษรขึ้นไป (ต้องมีตัวใหญ่, ตัวเล็ก, ตัวเลข และสัญลักษณ์)' });
+        return res.status(400).json({ error: 'Password must be at least 8 characters with uppercase, lowercase, a number, and a symbol' });
     }
 
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
@@ -75,7 +75,7 @@ export default async function handler(req, res) {
 
             if (!userRes.rows[0]) {
                 await client.query('ROLLBACK');
-                return res.status(400).json({ error: 'Token หมดอายุหรือไม่ถูกต้อง' });
+                return res.status(400).json({ error: 'Reset link has expired or is invalid' });
             }
 
             const { id: userId, username } = userRes.rows[0];
@@ -108,6 +108,6 @@ export default async function handler(req, res) {
 
     } catch (err) {
         console.error('[ERROR] reset-password.js:', err);
-        return res.status(500).json({ error: 'เซิร์ฟเวอร์ขัดข้อง' });
+        return res.status(500).json({ error: 'Internal server error' });
     }
 }

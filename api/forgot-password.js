@@ -17,7 +17,7 @@ import crypto from 'crypto';
 
 const SUCCESS_RESPONSE = Object.freeze({
     success: true,
-    message: 'หากอีเมลนี้อยู่ในระบบ ท่านจะได้รับลิงก์สำหรับตั้งรหัสผ่านใหม่'
+    message: 'If this email is registered, you will receive a password reset link shortly.'
 });
 
 export default async function handler(req, res) {
@@ -30,7 +30,7 @@ export default async function handler(req, res) {
     }
 
     if (!validateCsrfToken(req)) {
-        return res.status(403).json({ error: 'CSRF token ไม่ถูกต้อง' });
+        return res.status(403).json({ error: 'Invalid CSRF token' });
     }
 
     const ip = getClientIp(req);
@@ -45,19 +45,19 @@ export default async function handler(req, res) {
     }
 
     if (!isValidBody(req.body)) {
-        return res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' });
+        return res.status(400).json({ error: 'Invalid request data' });
     }
 
     const { email } = req.body;
 
     if (typeof email !== 'string' || !email) {
-        return res.status(400).json({ error: 'กรุณาระบุอีเมล' });
+        return res.status(400).json({ error: 'Please enter your email address' });
     }
     if (email.length > 254) {
-        return res.status(400).json({ error: 'อีเมลยาวเกินกำหนด' });
+        return res.status(400).json({ error: 'Email address is too long (max 254 characters)' });
     }
     if (!EMAIL_REGEX.test(email)) {
-        return res.status(400).json({ error: 'รูปแบบอีเมลไม่ถูกต้อง' });
+        return res.status(400).json({ error: 'Invalid email format' });
     }
 
     const emailLower = email.toLowerCase();
@@ -105,12 +105,12 @@ export default async function handler(req, res) {
 
         try {
             await mailTransporter.sendMail({
-                from:    '"Security System" <no-reply@system.com>',
+                from:    '"CARS SSO" <no-reply@system.com>',
                 to:      emailLower,
-                subject: '🔐 ลิงก์ตั้งรหัสผ่านใหม่',
-                html:    `<p>คลิกลิงก์ด้านล่างเพื่อตั้งรหัสผ่านใหม่:</p>
+                subject: '🔐 Reset your password — CARS SSO',
+                html:    `<p>Click the link below to set a new password:</p>
                           <p><a href="${resetLink}">${resetLink}</a></p>
-                          <p>ลิงก์นี้มีอายุ 1 ชั่วโมง หากท่านไม่ได้ขอรีเซ็ตรหัสผ่าน ไม่ต้องดำเนินการใดๆ</p>`
+                          <p>This link expires in 1 hour. If you did not request a password reset, you can safely ignore this email.</p>`
             });
             auditLog('FORGOT_PASSWORD_EMAIL_SENT', { ip });
         } catch (mailErr) {

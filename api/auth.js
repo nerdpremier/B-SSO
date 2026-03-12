@@ -158,21 +158,21 @@ export default async function handler(req, res) {
     }
 
     if (!validateCsrfToken(req)) {
-        return res.status(403).json({ error: 'CSRF token ไม่ถูกต้อง' });
+        return res.status(403).json({ error: 'Invalid CSRF token' });
     }
 
     const ip = getClientIp(req);
     try {
         if (await checkRateLimit(`ip:${ip}:auth`, 10, 60_000)) {
             auditLog('AUTH_IP_RATE_LIMIT', { ip });
-            return res.status(429).json({ error: 'ส่งคำขอบ่อยเกินไป กรุณารอสักครู่' });
+            return res.status(429).json({ error: 'Too many requests. Please try again later.' });
         }
     } catch (rlErr) {
         console.error('[WARN] rate-limit DB error (auth ip), failing open:', rlErr.message);
     }
 
     if (!isValidBody(req.body)) {
-        return res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' });
+        return res.status(400).json({ error: 'Invalid request data' });
     }
 
     const { action, username, email, password, fingerprint, logId, remember, redirect_back } = req.body;
@@ -186,22 +186,22 @@ export default async function handler(req, res) {
         // ═══════════════════════════════════════════════════════
         if (action === 'register') {
             if (typeof username !== 'string' || typeof email !== 'string' || typeof password !== 'string') {
-                return res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' });
+                return res.status(400).json({ error: 'Invalid request data' });
             }
             if (!username || !email || !password) {
-                return res.status(400).json({ error: 'กรุณาระบุข้อมูลให้ครบถ้วน' });
+                return res.status(400).json({ error: 'Please fill in all required fields' });
             }
             if (username.length > 32 || email.length > 254 || password.length > 128) {
-                return res.status(400).json({ error: 'ข้อมูลยาวเกินกำหนด' });
+                return res.status(400).json({ error: 'Input exceeds maximum allowed length' });
             }
             if (!USER_REGEX.test(username)) {
-                return res.status(400).json({ error: 'ชื่อผู้ใช้งานต้องเป็นตัวอักษรภาษาอังกฤษและตัวเลขเท่านั้น' });
+                return res.status(400).json({ error: 'Username may only contain letters and numbers' });
             }
             if (!EMAIL_REGEX.test(email)) {
-                return res.status(400).json({ error: 'รูปแบบอีเมลไม่ถูกต้อง' });
+                return res.status(400).json({ error: 'Invalid email format' });
             }
             if (!PASS_REGEX.test(password)) {
-                return res.status(400).json({ error: 'รหัสผ่านต้องมี 8 ตัวอักษรขึ้นไป (ต้องมีตัวใหญ่, ตัวเล็ก, ตัวเลข และสัญลักษณ์)' });
+                return res.status(400).json({ error: 'Password must be at least 8 characters with uppercase, lowercase, a number, and a symbol' });
             }
 
             // store lowercase เสมอ → forgot-password.js match ถูก + ป้องกัน duplicate case
@@ -213,7 +213,7 @@ export default async function handler(req, res) {
             );
             if (userExist.rows.length > 0) {
                 auditLog('REGISTER_DUPLICATE', { username, ip });
-                return res.status(400).json({ error: 'ชื่อผู้ใช้งานหรืออีเมลนี้ถูกลงทะเบียนแล้ว' });
+                return res.status(400).json({ error: 'Username or email is already registered' });
             }
 
             const hashed = await bcrypt.hash(password, 12);
@@ -227,7 +227,7 @@ export default async function handler(req, res) {
                 // 23505 = unique_violation: concurrent registrations race
                 if (insertErr.code === '23505') {
                     auditLog('REGISTER_DUPLICATE_RACE', { username, ip });
-                    return res.status(400).json({ error: 'ชื่อผู้ใช้งานหรืออีเมลนี้ถูกลงทะเบียนแล้ว' });
+                    return res.status(400).json({ error: 'Username or email is already registered' });
                 }
                 throw insertErr;
             }
@@ -262,12 +262,12 @@ export default async function handler(req, res) {
                 mailTransporter.sendMail({
                     from:    '"CARS SSO" <no-reply@system.com>',
                     to:      emailNormalized,
-                    subject: '✅ ยืนยันอีเมลของคุณ — CARS SSO',
-                    html:    `<h2>ยินดีต้อนรับ, ${username}!</h2>
-                              <p>กรุณาคลิกลิงก์ด้านล่างเพื่อยืนยันอีเมลของคุณ:</p>
+                    subject: '✅ Verify your email — CARS SSO',
+                    html:    `<h2>Welcome, ${username}!</h2>
+                              <p>Click the link below to verify your email address:</p>
                               <p><a href="${verifyLink}">${verifyLink}</a></p>
-                              <p>ลิงก์นี้มีอายุ 24 ชั่วโมง</p>
-                              <p>หากท่านไม่ได้สมัครสมาชิก กรุณาเพิกเฉยต่ออีเมลนี้</p>`
+                              <p>This link expires in 24 hours.</p>
+                              <p>If you did not create an account, you can safely ignore this email.</p>`
                 }).catch(mailErr => {
                     console.error('[WARN] auth.js verification email send failed:', mailErr.message);
                     auditLog('REGISTER_VERIFY_EMAIL_FAIL', { username, ip });
@@ -285,43 +285,43 @@ export default async function handler(req, res) {
         // ═══════════════════════════════════════════════════════
         if (action === 'login') {
             if (typeof username !== 'string' || typeof password !== 'string') {
-                return res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' });
+                return res.status(400).json({ error: 'Invalid request data' });
             }
             if (!username || !password) {
-                return res.status(400).json({ error: 'กรุณาระบุข้อมูลให้ครบถ้วน' });
+                return res.status(400).json({ error: 'Please fill in all required fields' });
             }
             if (username.length > 32 || password.length > 128) {
-                return res.status(400).json({ error: 'ข้อมูลยาวเกินกำหนด' });
+                return res.status(400).json({ error: 'Input exceeds maximum allowed length' });
             }
             if (!USER_REGEX.test(username)) {
-                return res.status(400).json({ error: 'ชื่อผู้ใช้งานไม่ถูกต้อง' });
+                return res.status(400).json({ error: 'Invalid username format' });
             }
 
             if (fingerprint !== undefined) {
                 if (typeof fingerprint !== 'string' || fingerprint.length > 256) {
-                    return res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' });
+                    return res.status(400).json({ error: 'Invalid request data' });
                 }
                 if (!SAFE_STRING_REGEX.test(fingerprint)) {
-                    return res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' });
+                    return res.status(400).json({ error: 'Invalid request data' });
                 }
             }
 
             // logId validation
             if (logId == null || (typeof logId !== 'string' && typeof logId !== 'number')) {
-                return res.status(400).json({ error: 'Session ไม่ถูกต้อง กรุณาเริ่มต้นใหม่' });
+                return res.status(400).json({ error: 'Invalid session. Please sign in again.' });
             }
             if (typeof logId === 'string' && !LOGID_STRING_REGEX.test(logId)) {
-                return res.status(400).json({ error: 'Session ไม่ถูกต้อง กรุณาเริ่มต้นใหม่' });
+                return res.status(400).json({ error: 'Invalid session. Please sign in again.' });
             }
             const parsedLogId = Number(logId);
             if (!Number.isInteger(parsedLogId) || parsedLogId <= 0 || parsedLogId > Number.MAX_SAFE_INTEGER) {
-                return res.status(400).json({ error: 'Session ไม่ถูกต้อง กรุณาเริ่มต้นใหม่' });
+                return res.status(400).json({ error: 'Invalid session. Please sign in again.' });
             }
 
             try {
                 if (await checkRateLimit(`user:${username}:auth`, 5, 60_000)) {
                     auditLog('AUTH_USERNAME_RATE_LIMIT', { username, ip });
-                    return res.status(429).json({ error: 'ส่งคำขอบ่อยเกินไป กรุณารอสักครู่' });
+                    return res.status(429).json({ error: 'Too many requests. Please try again later.' });
                 }
             } catch (rlErr) {
                 console.error('[WARN] rate-limit DB error (auth user), failing open:', rlErr.message);
@@ -339,7 +339,7 @@ export default async function handler(req, res) {
                 : await bcrypt.compare(password, DUMMY_HASH).then(() => false);
 
             if (!user || !passwordMatch) {
-                return res.status(401).json({ error: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' });
+                return res.status(401).json({ error: 'Incorrect username or password' });
             }
 
             // ── ตรวจ email verification ─────────────────────
@@ -347,7 +347,7 @@ export default async function handler(req, res) {
             if (!user.email_verified) {
                 auditLog('LOGIN_EMAIL_UNVERIFIED', { username, ip });
                 return res.status(403).json({
-                    error:                 'กรุณายืนยันอีเมลก่อนเข้าสู่ระบบ',
+                    error:                 'Please verify your email before signing in',
                     email_not_verified:    true,
                 });
             }
@@ -368,7 +368,7 @@ export default async function handler(req, res) {
 
                 if (!riskRes.rows[0]) {
                     await loginClient.query('ROLLBACK');
-                    return res.status(400).json({ error: 'Session หมดอายุ กรุณาเริ่มต้นใหม่' });
+                    return res.status(400).json({ error: 'Session expired. Please sign in again.' });
                 }
 
                 const { risk_level: dbRiskLevel, total_mfa_attempts } = riskRes.rows[0];
@@ -376,13 +376,13 @@ export default async function handler(req, res) {
                 if (dbRiskLevel === 'HIGH') {
                     await loginClient.query('ROLLBACK');
                     auditLog('LOGIN_BLOCKED_HIGH_RISK', { username, ip });
-                    return res.status(403).json({ error: 'ตรวจพบความเสี่ยงสูง กรุณาเริ่มต้นใหม่' });
+                    return res.status(403).json({ error: 'High-risk activity detected. Please try again later.' });
                 }
 
                 if (dbRiskLevel !== 'LOW' && dbRiskLevel !== 'MEDIUM') {
                     await loginClient.query('ROLLBACK');
                     auditLog('LOGIN_BLOCKED_UNEXPECTED_RISK_LEVEL', { username, ip, dbRiskLevel });
-                    return res.status(403).json({ error: 'ข้อมูล session ผิดปกติ กรุณาเริ่มต้นใหม่' });
+                    return res.status(403).json({ error: 'Unexpected session state. Please sign in again.' });
                 }
 
                 // ── MEDIUM path: ส่ง MFA email ─────────────────
@@ -393,7 +393,7 @@ export default async function handler(req, res) {
                     if (currentTotal + 1 >= TOTAL_MFA_MAX) {
                         await loginClient.query('ROLLBACK');
                         auditLog('MFA_TOTAL_LIMIT_FIRST_SEND', { username, ip, total: currentTotal });
-                        return res.status(429).json({ error: 'ยืนยันรหัสผิดเกินจำนวนที่อนุญาต กรุณาเริ่มต้นใหม่' });
+                        return res.status(429).json({ error: 'Too many failed attempts. Please sign in again.' });
                     }
 
                     const mfaCode = crypto.randomInt(100000, 1000000).toString();
@@ -418,8 +418,8 @@ export default async function handler(req, res) {
                         await mailTransporter.sendMail({
                             from:    '"Security System" <no-reply@system.com>',
                             to:      user.email,
-                            subject: '🔒 รหัสยืนยันตัวตน (MFA)',
-                            html:    `<h2>รหัสของคุณคือ: <b style="color:blue;">${mfaCode}</b></h2><p>รหัสนี้มีอายุ 5 นาที</p>`
+                            subject: '🔒 Your verification code (MFA)',
+                            html:    `<h2>Your code is: <b style="color:blue;">${mfaCode}</b></h2><p>This code expires in 5 minutes.</p>`
                         });
                         emailSent = true;
                     } catch (mailErr) {
@@ -472,7 +472,7 @@ export default async function handler(req, res) {
                 } catch (jwtErr) {
                     await loginClient.query('ROLLBACK');
                     console.error('[ERROR] auth.js JWT sign failed:', jwtErr.message);
-                    return res.status(500).json({ error: 'เซิร์ฟเวอร์ขัดข้อง' });
+                    return res.status(500).json({ error: 'Internal server error' });
                 }
 
                 await loginClient.query('COMMIT');
@@ -493,7 +493,7 @@ export default async function handler(req, res) {
                             console.error('[WARN] auth.js SSO token insert failed:', ssoErr.message);
                         }
                     } else {
-                        console.error('[WARN] auth.js: redirect_back ไม่ได้ลงทะเบียน:', redirect_back);
+                        console.error('[WARN] auth.js: redirect_back not registered:', redirect_back);
                     }
                 }
 
@@ -520,6 +520,6 @@ export default async function handler(req, res) {
 
     } catch (err) {
         console.error('[ERROR] auth.js:', err);
-        res.status(500).json({ error: 'เซิร์ฟเวอร์ขัดข้อง' });
+        res.status(500).json({ error: 'Internal server error' });
     }
 }

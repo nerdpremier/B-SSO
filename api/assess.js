@@ -38,7 +38,7 @@ export default async function handler(req, res) {
     }
 
     if (!validateCsrfToken(req)) {
-        return res.status(403).json({ error: 'CSRF token ไม่ถูกต้อง' });
+        return res.status(403).json({ error: 'Invalid CSRF token' });
     }
 
     try {
@@ -50,7 +50,7 @@ export default async function handler(req, res) {
                 return res.status(429).json({
                     risk_level: 'HIGH',
                     logId: null,
-                    message: 'ตรวจพบการเข้าถึงผิดปกติจาก IP ของท่าน กรุณารอสักครู่'
+                    message: 'Unusual activity detected from your IP. Please try again later.'
                 });
             }
         } catch (rlErr) {
@@ -58,28 +58,28 @@ export default async function handler(req, res) {
         }
 
         if (!isValidBody(req.body)) {
-            return res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' });
+            return res.status(400).json({ error: 'Invalid request data' });
         }
 
         const { username, device, fingerprint } = req.body;
 
         if (typeof username !== 'string' || !username || username.length > 32) {
-            return res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' });
+            return res.status(400).json({ error: 'Invalid request data' });
         }
         if (!USER_REGEX.test(username)) {
-            return res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' });
+            return res.status(400).json({ error: 'Invalid request data' });
         }
         if (typeof device !== 'string' || !device || device.length > 256) {
-            return res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' });
+            return res.status(400).json({ error: 'Invalid request data' });
         }
         if (!SAFE_STRING_REGEX.test(device)) {
-            return res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' });
+            return res.status(400).json({ error: 'Invalid request data' });
         }
         if (typeof fingerprint !== 'string' || !fingerprint || fingerprint.length > 256) {
-            return res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' });
+            return res.status(400).json({ error: 'Invalid request data' });
         }
         if (!SAFE_STRING_REGEX.test(fingerprint)) {
-            return res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' });
+            return res.status(400).json({ error: 'Invalid request data' });
         }
 
         try {
@@ -88,7 +88,7 @@ export default async function handler(req, res) {
                 return res.status(429).json({
                     risk_level: 'HIGH',
                     logId: null,
-                    message: 'ตรวจพบการเข้าถึงผิดปกติ กรุณารอสักครู่'
+                    message: 'Unusual activity detected. Please try again later.'
                 });
             }
         } catch (rlErr) {
@@ -172,6 +172,6 @@ export default async function handler(req, res) {
 
     } catch (err) {
         console.error('[ERROR] assess.js:', err);
-        return res.status(500).json({ error: 'เซิร์ฟเวอร์ขัดข้อง' });
+        return res.status(500).json({ error: 'Internal server error' });
     }
 }

@@ -18,7 +18,7 @@ export default async function handler(req, res) {
     try {
         if (await checkRateLimit(`ip:${ip}:csrf`, 60, 60_000)) {
             auditLog('CSRF_IP_RATE_LIMIT', { ip });
-            return res.status(429).json({ error: 'ส่งคำขอบ่อยเกินไป กรุณารอสักครู่' });
+            return res.status(429).json({ error: 'Too many requests. Please try again later.' });
         }
     } catch (rlErr) {
         console.error('[WARN] rate-limit DB error (csrf), failing open:', rlErr.message);
@@ -29,7 +29,7 @@ export default async function handler(req, res) {
         token = generateCsrfToken();
     } catch (err) {
         auditLog('CSRF_TOKEN_GEN_ERROR', { error: err.message });
-        return res.status(500).json({ error: 'ระบบขัดข้อง' });
+        return res.status(500).json({ error: 'Internal server error' });
     }
 
     // httpOnly: false — จำเป็น! JS ต้องอ่าน cookie เพื่อส่งใน X-CSRF-Token header

@@ -1,127 +1,201 @@
 /**
- * effects.js — CARS SSO (Light Theme)
- * 1. Light background: soft gradient orbs, dot grid, floating SSO node network
- * 2. CarsNav page transitions
- * 3. CarsToast notifications
- * 4. Button ripple
+ * effects.js — CARS SSO (Light Theme, Interactive)
+ * 1. SSO node network — nodes attracted to mouse, repel on click
+ * 2. Soft parallax gradient orbs
+ * 3. Dot grid that ripples outward from mouse
+ * 4. CarsNav page transitions
+ * 5. CarsToast notifications
+ * 6. Button ripple
  */
 (function () {
   'use strict';
 
   /* ══════════════════════════════════════════════════════════
-     1. LIGHT CANVAS — soft orbs + dot grid + SSO node network
+     1. INTERACTIVE CANVAS
      ══════════════════════════════════════════════════════════ */
   (function initCanvas() {
     var canvas = document.createElement('canvas');
     canvas.id = 'bg-canvas';
     canvas.setAttribute('aria-hidden', 'true');
-    if (document.body.firstChild) document.body.insertBefore(canvas, document.body.firstChild);
-    else document.body.appendChild(canvas);
+    document.body.insertBefore(canvas, document.body.firstChild);
 
-    var ctx = canvas.getContext('2d');
-    var W = 0, H = 0;
-    var tick = 0;
-    var mouse = { x: -999, y: -999, tx: -999, ty: -999 };
+    var ctx    = canvas.getContext('2d');
+    var W = 0, H = 0, tick = 0;
 
-    /* ── Palette ─────────────────────────────────────────── */
-    var BLUE   = [79, 110, 247];
-    var INDIGO = [120, 80, 240];
-    var TEAL   = [14, 164, 114];
-    var VIOLET = [150, 60, 220];
+    /* ── Mouse state ─────────────────────────────────────── */
+    var mouse   = { x: -9999, y: -9999, px: -9999, py: -9999 }; // px/py = smoothed
+    var clicks  = [];   // ripple bursts on click
 
-    /* ── Soft background orbs ────────────────────────────── */
+    /* ── Color palette ───────────────────────────────────── */
+    var C = {
+      blue:   [79,  110, 247],
+      indigo: [109,  68, 234],
+      teal:   [ 14, 164, 114],
+      violet: [155,  48, 220],
+    };
+
+    /* ═══════════════════════════════════════════════════════
+       SOFT BACKGROUND ORBS (parallax with mouse)
+       ═══════════════════════════════════════════════════════ */
     var ORB_DEFS = [
-      { rx: .12, ry: .18, r: 400, c: BLUE,   a: .08, spd: .00018, ang: 1.2, orbitR: 30 },
-      { rx: .86, ry: .20, r: 340, c: INDIGO, a: .07, spd: .00013, ang: 3.0, orbitR: 24 },
-      { rx: .50, ry: .88, r: 360, c: TEAL,   a: .07, spd: .00020, ang: 5.1, orbitR: 28 },
-      { rx: .22, ry: .68, r: 250, c: VIOLET, a: .05, spd: .00015, ang: 2.4, orbitR: 20 },
-      { rx: .80, ry: .62, r: 210, c: BLUE,   a: .05, spd: .00022, ang: 4.0, orbitR: 18 },
+      { rx:.10, ry:.15, r:460, c:C.blue,   a:.07, spd:.00016, ang:1.2, orR:32, px:.025 },
+      { rx:.88, ry:.18, r:380, c:C.indigo, a:.06, spd:.00012, ang:3.0, orR:26, px:.018 },
+      { rx:.50, ry:.90, r:420, c:C.teal,   a:.06, spd:.00019, ang:5.1, orR:30, px:.020 },
+      { rx:.20, ry:.72, r:290, c:C.violet, a:.05, spd:.00014, ang:2.4, orR:22, px:.012 },
+      { rx:.80, ry:.58, r:250, c:C.blue,   a:.04, spd:.00021, ang:4.0, orR:20, px:.010 },
     ];
     var orbs = [];
     function buildOrbs() {
       orbs = ORB_DEFS.map(function(d) {
-        return { bx: d.rx*W, by: d.ry*H, x: d.rx*W, y: d.ry*H, r: d.r, c: d.c, a: d.a, spd: d.spd, ang: d.ang, orbitR: d.orbitR };
+        return { bx:d.rx*W, by:d.ry*H, x:d.rx*W, y:d.ry*H,
+                 r:d.r, c:d.c, a:d.a, spd:d.spd, ang:d.ang, orR:d.orR, px:d.px };
       });
     }
     function updateOrbs() {
+      var mx = (mouse.px - W*.5) / W;
+      var my = (mouse.py - H*.5) / H;
       orbs.forEach(function(o) {
         o.ang += o.spd;
-        o.x = o.bx + Math.cos(o.ang) * o.orbitR;
-        o.y = o.by + Math.sin(o.ang) * o.orbitR * .7;
+        o.x = o.bx + Math.cos(o.ang)*o.orR - mx*W*o.px;
+        o.y = o.by + Math.sin(o.ang)*o.orR*.7 - my*H*o.px*.5;
       });
     }
     function drawOrbs() {
       orbs.forEach(function(o) {
         var g = ctx.createRadialGradient(o.x, o.y, 0, o.x, o.y, o.r);
-        var col = o.c[0]+','+o.c[1]+','+o.c[2];
-        g.addColorStop(0,   'rgba('+col+','+o.a+')');
-        g.addColorStop(.5,  'rgba('+col+','+(o.a*.45)+')');
-        g.addColorStop(1,   'rgba('+col+',0)');
+        var col = o.c.join(',');
+        g.addColorStop(0,  'rgba('+col+','+o.a+')');
+        g.addColorStop(.5, 'rgba('+col+','+(o.a*.4)+')');
+        g.addColorStop(1,  'rgba('+col+',0)');
         ctx.fillStyle = g;
         ctx.beginPath(); ctx.arc(o.x, o.y, o.r, 0, Math.PI*2); ctx.fill();
       });
     }
 
-    /* ── Subtle dot grid ─────────────────────────────────── */
-    var DOT_GAP = 38;
+    /* ═══════════════════════════════════════════════════════
+       DOT GRID — ripples outward from mouse
+       ═══════════════════════════════════════════════════════ */
+    var DOT_GAP   = 36;
+    var dotRipple = 0; // 0–1, driven by mouse velocity
+    var prevMouseX = 0, prevMouseY = 0;
     function drawDotGrid() {
-      var cols = Math.ceil(W / DOT_GAP) + 1;
-      var rows = Math.ceil(H / DOT_GAP) + 1;
+      // mouse speed → ripple intensity
+      var spd = Math.hypot(mouse.px - prevMouseX, mouse.py - prevMouseY);
+      dotRipple = Math.min(1, dotRipple * .88 + spd * .004);
+      prevMouseX = mouse.px; prevMouseY = mouse.py;
+
+      var cols = Math.ceil(W / DOT_GAP) + 2;
+      var rows = Math.ceil(H / DOT_GAP) + 2;
       for (var r = 0; r < rows; r++) {
         for (var c = 0; c < cols; c++) {
           var x = c * DOT_GAP, y = r * DOT_GAP;
-          var dx = x - mouse.x, dy = y - mouse.y;
+          var dx = x - mouse.px, dy = y - mouse.py;
           var dist = Math.sqrt(dx*dx + dy*dy);
-          var boost = dist < 100 ? (1 - dist/100) * .10 : 0;
-          ctx.fillStyle = 'rgba(79,110,247,' + (.07 + boost) + ')';
-          ctx.beginPath(); ctx.arc(x, y, 1.3, 0, Math.PI*2); ctx.fill();
+          // proximity glow
+          var prox  = dist < 140 ? (1 - dist/140) : 0;
+          // ripple wave emanating from mouse
+          var wave  = dotRipple > .01
+            ? Math.max(0, Math.sin((dist - tick*2.4) * .065) * .5 + .5) * dotRipple * .35
+            : 0;
+          var alpha = .055 + prox * .18 + wave;
+          ctx.fillStyle = 'rgba(79,110,247,' + alpha + ')';
+          // scale dot with proximity
+          var size = 1.1 + prox * 1.6;
+          ctx.beginPath(); ctx.arc(x, y, size, 0, Math.PI*2); ctx.fill();
         }
       }
     }
 
-    /* ── SSO Nodes ───────────────────────────────────────── */
-    function Node() { this.reset(); this.y = Math.random() * H; }
-    Node.prototype.reset = function() {
+    /* ═══════════════════════════════════════════════════════
+       SSO NODES — attracted to mouse, repelled on click
+       ═══════════════════════════════════════════════════════ */
+    function Node() { this.reset(true); }
+    Node.prototype.reset = function(anywhere) {
       this.x     = Math.random() * W;
-      this.y     = -20;
-      this.r     = 3.5 + Math.random() * 5.5;
-      this.vx    = (Math.random() - .5) * .28;
-      this.vy    = .22 + Math.random() * .32;
-      this.baseA = .28 + Math.random() * .38;
+      this.y     = anywhere ? Math.random() * H : -20;
+      this.vx    = (Math.random() - .5) * .4;
+      this.vy    = anywhere ? (Math.random() - .5) * .4 : .28 + Math.random() * .36;
+      this.r     = 3 + Math.random() * 5;
+      this.baseA = .25 + Math.random() * .42;
       this.alpha = this.baseA;
       this.phase = Math.random() * Math.PI * 2;
-      this.spd   = .007 + Math.random() * .011;
+      this.spd   = .006 + Math.random() * .012;
       var t = Math.random();
-      this.c = t < .45 ? BLUE : t < .72 ? INDIGO : TEAL;
+      this.c = t < .45 ? C.blue : t < .72 ? C.indigo : C.teal;
+      this.col = this.c.join(',');
     };
     Node.prototype.update = function() {
       this.phase += this.spd;
-      this.x += this.vx + Math.sin(this.phase * .6) * .35;
+      this.alpha  = this.baseA + Math.sin(this.phase) * this.baseA * .25;
+
+      // attraction toward mouse (within 200px)
+      var dx = mouse.px - this.x, dy = mouse.py - this.y;
+      var d  = Math.sqrt(dx*dx + dy*dy);
+      if (d < 200 && d > 1) {
+        var force = (200 - d) / 200 * .012;
+        this.vx += (dx/d) * force;
+        this.vy += (dy/d) * force;
+      }
+
+      // check click ripples for repulsion
+      for (var i = 0; i < clicks.length; i++) {
+        var cx = clicks[i], cdx = this.x - cx.x, cdy = this.y - cx.y;
+        var cd = Math.sqrt(cdx*cdx + cdy*cdy);
+        var wave = cx.r; // expanding radius
+        var bandwidth = 60;
+        if (Math.abs(cd - wave) < bandwidth && cd > 1) {
+          var repel = (1 - Math.abs(cd - wave)/bandwidth) * 2.8 * (1 - cx.age/1);
+          this.vx += (cdx/cd) * repel;
+          this.vy += (cdy/cd) * repel;
+        }
+      }
+
+      // natural drift
+      this.vx += (Math.random() - .5) * .04;
+      this.vy += (Math.random() - .5) * .04;
+
+      // dampen
+      this.vx *= .96;
+      this.vy *= .96;
+
+      // clamp speed
+      var spd = Math.hypot(this.vx, this.vy);
+      if (spd > 3.5) { this.vx = this.vx/spd*3.5; this.vy = this.vy/spd*3.5; }
+
+      this.x += this.vx;
       this.y += this.vy;
-      this.alpha = this.baseA + Math.sin(this.phase) * this.baseA * .28;
-      if (this.y > H + 20) this.reset();
+
+      // wrap edges (except near-mouse nodes drift back gently)
+      if (this.x < -30) this.x = W + 10;
+      if (this.x > W+30) this.x = -10;
+      if (this.y < -30) this.y = H + 10;
+      if (this.y > H+30) this.y = -10;
     };
     Node.prototype.draw = function() {
-      var col = this.c[0]+','+this.c[1]+','+this.c[2];
-      var g = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.r * 3.5);
-      g.addColorStop(0, 'rgba('+col+','+(this.alpha * .22)+')');
-      g.addColorStop(1, 'rgba('+col+',0)');
+      var g = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.r * 4);
+      g.addColorStop(0, 'rgba('+this.col+','+(this.alpha*.2)+')');
+      g.addColorStop(1, 'rgba('+this.col+',0)');
       ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(this.x, this.y, this.r * 3.5, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = 'rgba('+col+','+this.alpha+')';
+      ctx.beginPath(); ctx.arc(this.x, this.y, this.r*4, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = 'rgba('+this.col+','+this.alpha+')';
       ctx.beginPath(); ctx.arc(this.x, this.y, this.r, 0, Math.PI*2); ctx.fill();
     };
 
-    var CONNECT_DIST = 120;
+    var CONNECT_DIST = 130;
     function drawConnections(nodes) {
       for (var i = 0; i < nodes.length; i++) {
-        for (var j = i + 1; j < nodes.length; j++) {
+        for (var j = i+1; j < nodes.length; j++) {
           var dx = nodes[i].x - nodes[j].x, dy = nodes[i].y - nodes[j].y;
           var d  = Math.sqrt(dx*dx + dy*dy);
           if (d < CONNECT_DIST) {
-            var a = .15 * (1 - d / CONNECT_DIST) * Math.min(nodes[i].alpha, nodes[j].alpha);
-            ctx.strokeStyle = 'rgba(79,110,247,' + a + ')';
-            ctx.lineWidth   = .7;
+            // brighten connection when close to mouse
+            var midX = (nodes[i].x + nodes[j].x)*.5;
+            var midY = (nodes[i].y + nodes[j].y)*.5;
+            var mdist = Math.hypot(midX - mouse.px, midY - mouse.py);
+            var mBoost = mdist < 160 ? (1 - mdist/160) * .28 : 0;
+            var a = (.14 + mBoost) * (1 - d/CONNECT_DIST) * Math.min(nodes[i].alpha, nodes[j].alpha);
+            ctx.strokeStyle = 'rgba(79,110,247,'+a+')';
+            ctx.lineWidth   = .8 + mBoost * 1.2;
             ctx.beginPath();
             ctx.moveTo(nodes[i].x, nodes[i].y);
             ctx.lineTo(nodes[j].x, nodes[j].y);
@@ -131,53 +205,100 @@
       }
     }
 
-    function drawMouseHighlight() {
-      if (mouse.x < 0) return;
-      var g = ctx.createRadialGradient(mouse.x, mouse.y, 0, mouse.x, mouse.y, 160);
-      g.addColorStop(0, 'rgba(79,110,247,.05)');
-      g.addColorStop(1, 'rgba(79,110,247,0)');
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(mouse.x, mouse.y, 160, 0, Math.PI*2); ctx.fill();
+    /* ═══════════════════════════════════════════════════════
+       CLICK RIPPLES
+       ═══════════════════════════════════════════════════════ */
+    function updateClicks() {
+      for (var i = clicks.length-1; i >= 0; i--) {
+        clicks[i].r   += 7;
+        clicks[i].age += .028;
+        if (clicks[i].age >= 1) clicks.splice(i, 1);
+      }
+    }
+    function drawClicks() {
+      clicks.forEach(function(c) {
+        var a = (1 - c.age) * .35;
+        ctx.strokeStyle = 'rgba(79,110,247,' + a + ')';
+        ctx.lineWidth   = 1.5;
+        ctx.beginPath(); ctx.arc(c.x, c.y, c.r, 0, Math.PI*2); ctx.stroke();
+        // inner ring
+        if (c.r > 20) {
+          ctx.strokeStyle = 'rgba(109,68,234,' + a*.5 + ')';
+          ctx.lineWidth   = .8;
+          ctx.beginPath(); ctx.arc(c.x, c.y, c.r*.55, 0, Math.PI*2); ctx.stroke();
+        }
+      });
     }
 
+    /* ═══════════════════════════════════════════════════════
+       MOUSE GLOW
+       ═══════════════════════════════════════════════════════ */
+    function drawMouseGlow() {
+      if (mouse.px < 0) return;
+      var g = ctx.createRadialGradient(mouse.px, mouse.py, 0, mouse.px, mouse.py, 200);
+      g.addColorStop(0, 'rgba(79,110,247,.055)');
+      g.addColorStop(.5,'rgba(109,68,234,.025)');
+      g.addColorStop(1, 'rgba(79,110,247,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(mouse.px, mouse.py, 200, 0, Math.PI*2); ctx.fill();
+    }
+
+    /* ═══════════════════════════════════════════════════════
+       INIT & LOOP
+       ═══════════════════════════════════════════════════════ */
     var nodes = [];
     function spawnNodes() {
       nodes = [];
-      var count = Math.min(55, Math.floor(W * H / 16000));
+      var count = Math.min(60, Math.floor(W * H / 14000));
       for (var i = 0; i < count; i++) nodes.push(new Node());
     }
 
     function resize() {
       W = canvas.width  = window.innerWidth;
       H = canvas.height = window.innerHeight;
+      mouse.px = W*.5; mouse.py = H*.5;
       buildOrbs(); spawnNodes();
     }
 
     function loop() {
       tick++;
-      mouse.x += (mouse.tx - mouse.x) * .07;
-      mouse.y += (mouse.ty - mouse.y) * .07;
 
+      // Smooth mouse
+      mouse.px += (mouse.x - mouse.px) * .1;
+      mouse.py += (mouse.y - mouse.py) * .1;
+
+      // Background gradient
       ctx.clearRect(0, 0, W, H);
-      var bg = ctx.createLinearGradient(0, 0, W * .6, H);
-      bg.addColorStop(0,  '#F5F7FD');
+      var bg = ctx.createLinearGradient(0, 0, W*.7, H);
+      bg.addColorStop(0,  '#F6F8FD');
       bg.addColorStop(.5, '#EFF3FF');
-      bg.addColorStop(1,  '#F3F6FC');
+      bg.addColorStop(1,  '#F3F7FC');
       ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
 
       updateOrbs();
       drawOrbs();
       drawDotGrid();
-      drawMouseHighlight();
+      drawMouseGlow();
       drawConnections(nodes);
-      for (var i = 0; i < nodes.length; i++) { nodes[i].update(); nodes[i].draw(); }
+      for (var i = 0; i < nodes.length; i++) nodes[i].update(), nodes[i].draw();
+      updateClicks();
+      drawClicks();
 
       requestAnimationFrame(loop);
     }
 
     window.addEventListener('resize', resize);
-    document.addEventListener('mousemove', function(e) { mouse.tx = e.clientX; mouse.ty = e.clientY; });
-    document.addEventListener('mouseleave', function() { mouse.tx = -999; mouse.ty = -999; });
+    document.addEventListener('mousemove', function(e) {
+      mouse.x = e.clientX; mouse.y = e.clientY;
+    });
+    document.addEventListener('mouseleave', function() {
+      mouse.x = W*.5; mouse.y = H*.5;
+    });
+    document.addEventListener('click', function(e) {
+      // Don't fire on interactive elements
+      if (e.target.closest('a,button,input,select,textarea')) return;
+      clicks.push({ x: e.clientX, y: e.clientY, r: 4, age: 0 });
+    });
 
     resize(); loop();
   })();
@@ -235,7 +356,10 @@
     var rect=btn.getBoundingClientRect(), size=Math.max(rect.width,rect.height)*2.6;
     var cx=e&&e.clientX!=null?e.clientX-rect.left:rect.width/2, cy=e&&e.clientY!=null?e.clientY-rect.top:rect.height/2;
     var el=document.createElement('span'); el.setAttribute('aria-hidden','true'); btn.appendChild(el);
-    var anim=el.animate([{position:'absolute',width:size+'px',height:size+'px',left:(cx-size/2)+'px',top:(cy-size/2)+'px',borderRadius:'50%',background:'rgba(255,255,255,0.25)',transform:'scale(0)',opacity:'1',pointerEvents:'none'},{transform:'scale(1)',opacity:'0'}],{duration:560,easing:'ease-out',fill:'forwards'});
+    var anim=el.animate([
+      {position:'absolute',width:size+'px',height:size+'px',left:(cx-size/2)+'px',top:(cy-size/2)+'px',borderRadius:'50%',background:'rgba(255,255,255,0.3)',transform:'scale(0)',opacity:'1',pointerEvents:'none'},
+      {transform:'scale(1)',opacity:'0'}
+    ],{duration:560,easing:'ease-out',fill:'forwards'});
     anim.onfinish=function(){el.remove();};
   }
   document.addEventListener('click',function(e){var b=e.target.closest('.btn-primary,.btn-portal,.btn-signout,.btn-create');if(b)ripple(b,e);});

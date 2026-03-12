@@ -56,45 +56,45 @@ export default async function handler(req, res) {
     }
 
     if (!validateCsrfToken(req)) {
-        return res.status(403).json({ error: 'CSRF token ไม่ถูกต้อง' });
+        return res.status(403).json({ error: 'Invalid CSRF token' });
     }
 
     const ip = getClientIp(req);
     try {
         if (await checkRateLimit(`ip:${ip}:verify-mfa`, 30, 60_000)) {
             auditLog('VERIFY_MFA_IP_RATE_LIMIT', { ip });
-            return res.status(429).json({ error: 'ส่งคำขอบ่อยเกินไป กรุณารอสักครู่' });
+            return res.status(429).json({ error: 'Too many requests. Please try again later.' });
         }
     } catch (rlErr) {
         console.error('[WARN] rate-limit DB error (verify-mfa), failing open:', rlErr.message);
     }
 
     if (!isValidBody(req.body)) {
-        return res.status(400).json({ error: 'ข้อมูลไม่ครบถ้วน' });
+        return res.status(400).json({ error: 'Missing required fields' });
     }
 
     const { logId, code, remember, username, redirect_back } = req.body;
 
     if (typeof username !== 'string' || !username || username.length > 32) {
-        return res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' });
+        return res.status(400).json({ error: 'Invalid request data' });
     }
     if (!USER_REGEX.test(username)) {
-        return res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' });
+        return res.status(400).json({ error: 'Invalid request data' });
     }
 
     if (logId == null || (typeof logId !== 'string' && typeof logId !== 'number')) {
-        return res.status(400).json({ error: 'Session ไม่ถูกต้อง กรุณาเริ่มต้นใหม่' });
+        return res.status(400).json({ error: 'Invalid session. Please sign in again.' });
     }
     if (typeof logId === 'string' && !LOGID_STRING_REGEX.test(logId)) {
-        return res.status(400).json({ error: 'Session ไม่ถูกต้อง กรุณาเริ่มต้นใหม่' });
+        return res.status(400).json({ error: 'Invalid session. Please sign in again.' });
     }
     const parsedLogId = Number(logId);
     if (!Number.isInteger(parsedLogId) || parsedLogId <= 0 || parsedLogId > Number.MAX_SAFE_INTEGER) {
-        return res.status(400).json({ error: 'Session ไม่ถูกต้อง กรุณาเริ่มต้นใหม่' });
+        return res.status(400).json({ error: 'Invalid session. Please sign in again.' });
     }
 
     if (typeof code !== 'string' || !OTP_REGEX.test(code)) {
-        return res.status(400).json({ error: 'รหัส OTP ไม่ถูกต้อง' });
+        return res.status(400).json({ error: 'Invalid OTP format' });
     }
 
     try {
@@ -119,7 +119,7 @@ export default async function handler(req, res) {
 
             if (!riskRes.rows[0]) {
                 await client.query('ROLLBACK');
-                return res.status(400).json({ error: 'Session หมดอายุ กรุณาเริ่มต้นใหม่' });
+                return res.status(400).json({ error: 'Session expired. Please sign in again.' });
             }
 
             const row = riskRes.rows[0];
@@ -130,13 +130,13 @@ export default async function handler(req, res) {
             if (currentAttempts >= MFA_MAX_ATTEMPTS || currentTotal >= TOTAL_MFA_MAX) {
                 await client.query('ROLLBACK');
                 auditLog('MFA_ATTEMPT_LIMIT', { username, ip, currentAttempts, currentTotal });
-                return res.status(429).json({ error: 'ยืนยันรหัสผิดเกินจำนวนที่อนุญาต กรุณาเริ่มต้นใหม่' });
+                return res.status(429).json({ error: 'Too many failed attempts. Please sign in again.' });
             }
 
             // ── OTP expiry ────────────────────────────────────
             if (!row.mfa_expires_at || new Date() > new Date(row.mfa_expires_at)) {
                 await client.query('ROLLBACK');
-                return res.status(400).json({ error: 'รหัส OTP หมดอายุ กรุณาขอรหัสใหม่' });
+                return res.status(400).json({ error: 'OTP has expired. Please request a new code.' });
             }
 
             // ── Atomic increment + TOCTOU guard ──────────────
@@ -153,7 +153,7 @@ export default async function handler(req, res) {
 
             if (!updateRes.rows[0]) {
                 await client.query('ROLLBACK');
-                return res.status(429).json({ error: 'ยืนยันรหัสผิดเกินจำนวนที่อนุญาต กรุณาเริ่มต้นใหม่' });
+                return res.status(429).json({ error: 'Too many failed attempts. Please sign in again.' });
             }
 
             // ── Timing-safe OTP comparison ────────────────────
@@ -161,7 +161,7 @@ export default async function handler(req, res) {
             if (!timingSafeHashEqual(row.mfa_code, inputHash)) {
                 await client.query('COMMIT'); // commit attempt counter
                 auditLog('MFA_WRONG_CODE', { username, ip });
-                return res.status(401).json({ error: 'รหัส OTP ไม่ถูกต้อง' });
+                return res.status(401).json({ error: 'Invalid OTP format' });
             }
 
             // ── MFA passed — mark logId as used ──────────────
@@ -190,7 +190,7 @@ export default async function handler(req, res) {
             } catch (jwtErr) {
                 await client.query('ROLLBACK');
                 console.error('[ERROR] verify-mfa.js JWT sign failed:', jwtErr.message);
-                return res.status(500).json({ error: 'เซิร์ฟเวอร์ขัดข้อง' });
+                return res.status(500).json({ error: 'Internal server error' });
             }
 
             await client.query('COMMIT');
@@ -211,7 +211,7 @@ export default async function handler(req, res) {
                         console.error('[WARN] verify-mfa.js SSO token insert failed:', ssoErr.message);
                     }
                 } else {
-                    console.error('[WARN] verify-mfa.js: redirect_back ไม่ได้ลงทะเบียน:', redirect_back);
+                    console.error('[WARN] verify-mfa.js: redirect_back not registered:', redirect_back);
                 }
             }
 
@@ -235,6 +235,6 @@ export default async function handler(req, res) {
 
     } catch (err) {
         console.error('[ERROR] verify-mfa.js:', err);
-        return res.status(500).json({ error: 'เซิร์ฟเวอร์ขัดข้อง' });
+        return res.status(500).json({ error: 'Internal server error' });
     }
 }

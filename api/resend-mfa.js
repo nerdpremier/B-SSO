@@ -26,41 +26,41 @@ export default async function handler(req, res) {
     }
 
     if (!validateCsrfToken(req)) {
-        return res.status(403).json({ error: 'CSRF token ไม่ถูกต้อง' });
+        return res.status(403).json({ error: 'Invalid CSRF token' });
     }
 
     const ip = getClientIp(req);
     try {
         if (await checkRateLimit(`ip:${ip}:resend-mfa`, 20, 60_000)) {
             auditLog('RESEND_MFA_IP_RATE_LIMIT', { ip });
-            return res.status(429).json({ error: 'ส่งคำขอบ่อยเกินไป กรุณารอสักครู่' });
+            return res.status(429).json({ error: 'Too many requests. Please try again later.' });
         }
     } catch (rlErr) {
         console.error('[WARN] rate-limit DB error (resend-mfa), failing open:', rlErr.message);
     }
 
     if (!isValidBody(req.body)) {
-        return res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' });
+        return res.status(400).json({ error: 'Invalid request data' });
     }
 
     const { logId, username } = req.body;
 
     if (typeof username !== 'string' || !username || username.length > 32) {
-        return res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' });
+        return res.status(400).json({ error: 'Invalid request data' });
     }
     if (!USER_REGEX.test(username)) {
-        return res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' });
+        return res.status(400).json({ error: 'Invalid request data' });
     }
 
     if (logId == null || (typeof logId !== 'string' && typeof logId !== 'number')) {
-        return res.status(400).json({ error: 'Session ไม่ถูกต้อง กรุณาเริ่มต้นใหม่' });
+        return res.status(400).json({ error: 'Invalid session. Please sign in again.' });
     }
     if (typeof logId === 'string' && !LOGID_STRING_REGEX.test(logId)) {
-        return res.status(400).json({ error: 'Session ไม่ถูกต้อง กรุณาเริ่มต้นใหม่' });
+        return res.status(400).json({ error: 'Invalid session. Please sign in again.' });
     }
     const parsedLogId = Number(logId);
     if (!Number.isInteger(parsedLogId) || parsedLogId <= 0 || parsedLogId > Number.MAX_SAFE_INTEGER) {
-        return res.status(400).json({ error: 'Session ไม่ถูกต้อง กรุณาเริ่มต้นใหม่' });
+        return res.status(400).json({ error: 'Invalid session. Please sign in again.' });
     }
 
     try {
@@ -83,7 +83,7 @@ export default async function handler(req, res) {
 
             if (!riskRes.rows[0]) {
                 await client.query('ROLLBACK');
-                return res.status(400).json({ error: 'Session หมดอายุ กรุณาเริ่มต้นใหม่' });
+                return res.status(400).json({ error: 'Session expired. Please sign in again.' });
             }
 
             const { total_mfa_attempts, mfa_resent_at, email } = riskRes.rows[0];
@@ -93,7 +93,7 @@ export default async function handler(req, res) {
             if (currentTotal + 1 >= TOTAL_MFA_MAX) {
                 await client.query('ROLLBACK');
                 auditLog('MFA_TOTAL_LIMIT_RESEND', { username, ip, total: currentTotal });
-                return res.status(429).json({ error: 'ยืนยันรหัสผิดเกินจำนวนที่อนุญาต กรุณาเริ่มต้นใหม่' });
+                return res.status(429).json({ error: 'Too many failed attempts. Please sign in again.' });
             }
 
             // Cooldown check
@@ -103,7 +103,7 @@ export default async function handler(req, res) {
                     await client.query('ROLLBACK');
                     const remaining = Math.ceil(RESEND_COOLDOWN_SEC - secondsSinceLast);
                     return res.status(429).json({
-                        error:     `กรุณารอ ${remaining} วินาทีก่อนขอรหัสใหม่`,
+                        error:     `Please wait ${remaining} second${remaining !== 1 ? 's' : ''} before requesting a new code.`,
                         remaining,
                     });
                 }
@@ -130,8 +130,8 @@ export default async function handler(req, res) {
                 await mailTransporter.sendMail({
                     from:    '"Security System" <no-reply@system.com>',
                     to:      email,
-                    subject: '🔒 รหัสยืนยันตัวตนใหม่ (MFA)',
-                    html:    `<h2>รหัสใหม่ของคุณคือ: <b style="color:blue;">${mfaCode}</b></h2><p>รหัสนี้มีอายุ 5 นาที</p>`
+                    subject: '🔒 Your new verification code (MFA)',
+                    html:    `<h2>Your new code is: <b style="color:blue;">${mfaCode}</b></h2><p>This code expires in 5 minutes.</p>`
                 });
                 emailSent = true;
             } catch (mailErr) {
@@ -167,6 +167,6 @@ export default async function handler(req, res) {
 
     } catch (err) {
         console.error('[ERROR] resend-mfa.js:', err);
-        return res.status(500).json({ error: 'เซิร์ฟเวอร์ขัดข้อง' });
+        return res.status(500).json({ error: 'Internal server error' });
     }
 }
