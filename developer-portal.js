@@ -50,7 +50,7 @@ async function loadApps() {
         <div class="apps-empty">
           <div class="apps-empty-icon">🔌</div>
           <div class="apps-empty-title">No apps yet</div>
-          <div class="apps-empty-text">Fill in the form above to create your first app.</div>
+          <div class="apps-empty-sub">Fill in the form above to create your first app.</div>
         </div>`;
       return;
     }
@@ -156,7 +156,7 @@ async function createApp() {
 function showCreateError(msg) {
   const el = document.getElementById('create-status');
   el.textContent = '⚠️ ' + msg;
-  el.className   = 'create-error';
+  el.className   = 'danger';
   el.style.display = 'block';
   document.getElementById('btn-create').disabled    = false;
   document.getElementById('btn-create').textContent = 'Create App';

@@ -92,7 +92,7 @@ function updateStatus(type, msg) {
     const box = document.getElementById('status-box');
     if (!box) return;
     box.className = 'status-box';
-    box.style.display = 'block';
+    box.style.display = ''; // let CSS classes control display (flex for loading, block for others)
     if (type === 'danger')       box.classList.add('danger');
     else if (type === 'success') box.classList.add('success');
     else if (type === 'warning') box.classList.add('warning');
@@ -208,7 +208,7 @@ async function handleRegister() {
                 setTimeout(() => window.location.href = '/login', 1500);
             }
         } else {
-            updateStatus('danger', data.error);
+            updateStatus('danger', data.error || 'An error occurred. Please try again.');
         }
     } catch (err) {
         updateStatus('danger', err.name === 'AbortError'
@@ -395,6 +395,10 @@ function startAccountLockdown(seconds) {
 
     if (btn) btn.disabled = true;
 
+    // Show message immediately so the user isn't left on "Verifying…" for a full second
+    updateStatus('danger', `🚨 Account temporarily locked. Please wait ${remaining} seconds.`);
+    remaining--;
+
     clearInterval(countdownTimer);
     countdownTimer = setInterval(() => {
         if (remaining <= 0) {
@@ -465,7 +469,7 @@ async function executePasswordReset() {
             updateStatus('success', 'Password updated. Redirecting to sign in…');
             setTimeout(() => window.location.href = '/login', 2000);
         } else {
-            updateStatus('danger', data.error);
+            updateStatus('danger', data.error || 'An error occurred. Please try again.');
         }
     } catch (err) {
         updateStatus('danger', err.name === 'AbortError'

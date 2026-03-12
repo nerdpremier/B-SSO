@@ -157,7 +157,7 @@ function requireJson(req, res) {
         return false;
     }
     if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
-        res.status(400).json({ error: 'ข้อมูลไม่ถูกต้อง' });
+        res.status(400).json({ error: 'Invalid request body' });
         return false;
     }
     return true;
@@ -173,7 +173,7 @@ async function handleClients(req, res, ip) {
     try {
         if (await checkRateLimit(`ip:${ip}:oauth-clients`, 20, 60_000)) {
             auditLog('OAUTH_CLIENTS_RATE_LIMIT', { ip });
-            return res.status(429).json({ error: 'ส่งคำขอบ่อยเกินไป กรุณารอสักครู่' });
+            return res.status(429).json({ error: 'Too many requests. Please try again later.' });
         }
     } catch (rlErr) {
         console.error('[WARN] rate-limit error (oauth-clients), failing open:', rlErr.message);
@@ -183,7 +183,7 @@ async function handleClients(req, res, ip) {
     // เหมาะกับ same-origin portal มากกว่า Bearer
     const decoded = await verifySessionCookie(req);
     if (!decoded) {
-        return res.status(401).json({ error: 'Unauthorized: กรุณา login ก่อน' });
+        return res.status(401).json({ error: 'Unauthorized. Please sign in first.' });
     }
     const username = decoded.username;
 
@@ -194,28 +194,28 @@ async function handleClients(req, res, ip) {
             const { name, redirect_uris, allowed_scopes: reqScopes } = req.body;
 
             if (typeof name !== 'string' || !name.trim() || name.length > 128)
-                return res.status(400).json({ error: 'name ต้องเป็น string ไม่เกิน 128 ตัวอักษร' });
+                return res.status(400).json({ error: 'App name must be a non-empty string (max 128 characters)' });
 
             if (!Array.isArray(redirect_uris) || redirect_uris.length === 0 || redirect_uris.length > 10)
-                return res.status(400).json({ error: 'redirect_uris ต้องเป็น array มี 1–10 รายการ' });
+                return res.status(400).json({ error: 'redirect_uris must be an array with 1-10 entries' });
 
             for (const uri of redirect_uris) {
                 if (typeof uri !== 'string' || uri.length > 512)
-                    return res.status(400).json({ error: `redirect_uri ไม่ถูกต้อง: ${uri}` });
+                    return res.status(400).json({ error: `Invalid redirect_uri: ${uri}` });
                 let parsed;
                 try { parsed = new URL(uri); } catch {
-                    return res.status(400).json({ error: `redirect_uri format ไม่ถูกต้อง: ${uri}` });
+                    return res.status(400).json({ error: `Invalid redirect_uri format: ${uri}` });
                 }
                 const isLocalhost = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
                 if (parsed.protocol !== 'https:' && !isLocalhost)
-                    return res.status(400).json({ error: `redirect_uri ต้องเป็น HTTPS (ยกเว้น localhost): ${uri}` });
+                    return res.status(400).json({ error: `redirect_uri must use HTTPS (or localhost for dev): ${uri}` });
             }
 
             // Validate allowed_scopes (optional — default ['profile'])
             let allowedScopes = DEFAULT_SCOPE;
             if (reqScopes !== undefined) {
                 if (!Array.isArray(reqScopes) || reqScopes.some(s => !VALID_SCOPES.has(s)))
-                    return res.status(400).json({ error: `allowed_scopes ไม่ถูกต้อง — ค่าที่รองรับ: ${[...VALID_SCOPES].join(', ')}` });
+                    return res.status(400).json({ error: `allowed_scopes contains invalid values — supported: ${[...VALID_SCOPES].join(', ')}` });
                 allowedScopes = reqScopes.length > 0 ? reqScopes : DEFAULT_SCOPE;
             }
 
@@ -223,7 +223,7 @@ async function handleClients(req, res, ip) {
                 'SELECT COUNT(*) FROM oauth_clients WHERE owner_username = $1', [username]
             );
             if (parseInt(countRow.rows[0].count, 10) >= MAX_CLIENTS_PER_USER)
-                return res.status(400).json({ error: `สร้าง client app ได้สูงสุด ${MAX_CLIENTS_PER_USER} apps ต่อ account` });
+                return res.status(400).json({ error: `Maximum ${MAX_CLIENTS_PER_USER} apps per account` });
 
             const clientId     = 'c_' + crypto.randomBytes(16).toString('hex');
             const clientSecret = crypto.randomBytes(32).toString('hex');
@@ -242,7 +242,7 @@ async function handleClients(req, res, ip) {
                 name:           name.trim(),
                 redirect_uris,
                 allowed_scopes: allowedScopes,
-                notice:         '⚠️ บันทึก client_secret ไว้ด้วย จะไม่สามารถดูซ้ำได้อีก'
+                notice:         '⚠️ Save your client_secret now — it cannot be retrieved again'
             });
         }
 
@@ -262,7 +262,7 @@ async function handleClients(req, res, ip) {
             if (!requireJson(req, res)) return;
             const { client_id } = req.body;
             if (!client_id || typeof client_id !== 'string' || client_id.length > 128)
-                return res.status(400).json({ error: 'ต้องระบุ client_id' });
+                return res.status(400).json({ error: 'client_id is required' });
 
             const newSecret     = crypto.randomBytes(32).toString('hex');
             const newSecretHash = hashClientSecret(newSecret);
@@ -279,7 +279,7 @@ async function handleClients(req, res, ip) {
                 );
                 if (result.rowCount === 0) {
                     await rotateClient.query('ROLLBACK');
-                    return res.status(404).json({ error: 'ไม่พบ client app หรือไม่ใช่ของคุณ' });
+                    return res.status(404).json({ error: 'App not found or does not belong to you' });
                 }
 
                 // Revoke token ทั้งหมดของ client นี้ — บังคับ re-auth
@@ -294,7 +294,7 @@ async function handleClients(req, res, ip) {
                 return res.status(200).json({
                     client_id,
                     client_secret: newSecret,
-                    notice:        '⚠️ secret ใหม่ — token เก่าทั้งหมดถูก revoke แล้ว'
+                    notice:        '⚠️ New secret issued — all previous tokens have been revoked'
                 });
             } catch (err) {
                 try { await rotateClient.query('ROLLBACK'); } catch { /* ignore */ }
@@ -309,14 +309,14 @@ async function handleClients(req, res, ip) {
             if (!requireJson(req, res)) return;
             const { client_id } = req.body;
             if (!client_id || typeof client_id !== 'string' || client_id.length > 128)
-                return res.status(400).json({ error: 'ต้องระบุ client_id' });
+                return res.status(400).json({ error: 'client_id is required' });
 
             const result = await pool.query(
                 'DELETE FROM oauth_clients WHERE client_id = $1 AND owner_username = $2',
                 [client_id, username]
             );
             if (result.rowCount === 0)
-                return res.status(404).json({ error: 'ไม่พบ client app หรือไม่ใช่ของคุณ' });
+                return res.status(404).json({ error: 'App not found or does not belong to you' });
 
             auditLog('OAUTH_CLIENT_DELETED', { username, clientId: client_id, ip });
             return res.status(200).json({ success: true });
@@ -325,7 +325,7 @@ async function handleClients(req, res, ip) {
         return res.status(405).json({ error: 'Method not allowed' });
     } catch (err) {
         console.error('[ERROR] oauth.js handleClients:', err);
-        return res.status(500).json({ error: 'เซิร์ฟเวอร์ขัดข้อง' });
+        return res.status(500).json({ error: 'Internal server error' });
     }
 }
 
@@ -336,7 +336,7 @@ async function handleAuthorize(req, res, ip) {
     try {
         if (await checkRateLimit(`ip:${ip}:oauth-authorize`, 30, 60_000)) {
             auditLog('OAUTH_AUTHORIZE_RATE_LIMIT', { ip });
-            return res.status(429).json({ error: 'ส่งคำขอบ่อยเกินไป กรุณารอสักครู่' });
+            return res.status(429).json({ error: 'Too many requests. Please try again later.' });
         }
     } catch (rlErr) {
         console.error('[WARN] rate-limit error (oauth-authorize), failing open:', rlErr.message);
@@ -350,18 +350,18 @@ async function handleAuthorize(req, res, ip) {
         if (response_type !== 'code')
             return res.status(400).json({ error: 'unsupported_response_type' });
         if (!client_id || typeof client_id !== 'string' || client_id.length > 128)
-            return res.status(400).json({ error: 'invalid_request: client_id ขาดหรือไม่ถูกต้อง' });
+            return res.status(400).json({ error: 'invalid_request: missing or invalid client_id' });
         if (!redirect_uri || typeof redirect_uri !== 'string' || redirect_uri.length > 512)
-            return res.status(400).json({ error: 'invalid_request: redirect_uri ขาดหรือไม่ถูกต้อง' });
+            return res.status(400).json({ error: 'invalid_request: missing or invalid redirect_uri' });
         if (!state || typeof state !== 'string' || state.length > 256)
-            return res.status(400).json({ error: 'invalid_request: state ขาดหรือไม่ถูกต้อง' });
+            return res.status(400).json({ error: 'invalid_request: missing or invalid state' });
 
         // PKCE validation (optional, but if present must be S256)
         if (code_challenge !== undefined) {
             if (code_challenge_method !== 'S256')
-                return res.status(400).json({ error: 'invalid_request: code_challenge_method ต้องเป็น S256' });
+                return res.status(400).json({ error: 'invalid_request: code_challenge_method must be S256' });
             if (typeof code_challenge !== 'string' || code_challenge.length < 43 || code_challenge.length > 128)
-                return res.status(400).json({ error: 'invalid_request: code_challenge ไม่ถูกต้อง' });
+                return res.status(400).json({ error: 'invalid_request: invalid code_challenge' });
         }
 
         let clientResult;
@@ -372,16 +372,16 @@ async function handleAuthorize(req, res, ip) {
             );
         } catch (dbErr) {
             console.error('[ERROR] oauth.js handleAuthorize GET DB:', dbErr.message);
-            return res.status(500).json({ error: 'เซิร์ฟเวอร์ขัดข้อง' });
+            return res.status(500).json({ error: 'Internal server error' });
         }
 
         if (clientResult.rows.length === 0)
-            return res.status(400).json({ error: 'invalid_client: client_id ไม่ถูกต้อง' });
+            return res.status(400).json({ error: 'invalid_client: unknown client_id' });
 
         const { name: appName, redirect_uris, allowed_scopes } = clientResult.rows[0];
 
         if (!redirect_uris.includes(redirect_uri))
-            return res.status(400).json({ error: 'invalid_redirect_uri: ไม่ได้ลงทะเบียน URI นี้' });
+            return res.status(400).json({ error: 'invalid_redirect_uri: URI not registered' });
 
         // คำนวณ effective scope = intersection of requested + allowed
         const effectiveScope = parseScope(scope, allowed_scopes);
@@ -406,22 +406,22 @@ async function handleAuthorize(req, res, ip) {
                 scope, code_challenge, code_challenge_method } = req.body;
 
         if (!client_id || typeof client_id !== 'string' || client_id.length > 128)
-            return res.status(400).json({ error: 'invalid_request: client_id ขาดหรือไม่ถูกต้อง' });
+            return res.status(400).json({ error: 'invalid_request: missing or invalid client_id' });
         if (!redirect_uri || typeof redirect_uri !== 'string' || redirect_uri.length > 512)
-            return res.status(400).json({ error: 'invalid_request: redirect_uri ขาดหรือไม่ถูกต้อง' });
+            return res.status(400).json({ error: 'invalid_request: missing or invalid redirect_uri' });
         if (!state || typeof state !== 'string' || state.length > 256)
-            return res.status(400).json({ error: 'invalid_request: state ขาดหรือไม่ถูกต้อง' });
+            return res.status(400).json({ error: 'invalid_request: missing or invalid state' });
 
         // PKCE validation
         if (code_challenge !== undefined) {
             if (code_challenge_method !== 'S256')
-                return res.status(400).json({ error: 'invalid_request: code_challenge_method ต้องเป็น S256' });
+                return res.status(400).json({ error: 'invalid_request: code_challenge_method must be S256' });
             if (typeof code_challenge !== 'string' || code_challenge.length < 43 || code_challenge.length > 128)
-                return res.status(400).json({ error: 'invalid_request: code_challenge ไม่ถูกต้อง' });
+                return res.status(400).json({ error: 'invalid_request: invalid code_challenge' });
         }
 
         const decoded = await verifySessionCookie(req);
-        if (!decoded) return res.status(401).json({ error: 'session_expired: กรุณา login ใหม่' });
+        if (!decoded) return res.status(401).json({ error: 'session_expired: please sign in again' });
 
         let clientRow;
         try {
@@ -431,11 +431,11 @@ async function handleAuthorize(req, res, ip) {
                 [client_id, redirect_uri]
             );
             if (uriResult.rows.length === 0)
-                return res.status(400).json({ error: 'invalid_client หรือ invalid_redirect_uri' });
+                return res.status(400).json({ error: 'invalid_client or invalid_redirect_uri' });
             clientRow = uriResult.rows[0];
         } catch (dbErr) {
             console.error('[ERROR] oauth.js handleAuthorize POST DB:', dbErr.message);
-            return res.status(500).json({ error: 'เซิร์ฟเวอร์ขัดข้อง' });
+            return res.status(500).json({ error: 'Internal server error' });
         }
 
         // ── Deny ──────────────────────────────────────────
@@ -467,7 +467,7 @@ async function handleAuthorize(req, res, ip) {
             );
         } catch (dbErr) {
             console.error('[ERROR] oauth.js handleAuthorize insert code:', dbErr.message);
-            return res.status(500).json({ error: 'เซิร์ฟเวอร์ขัดข้อง' });
+            return res.status(500).json({ error: 'Internal server error' });
         }
 
         auditLog('OAUTH_CODE_ISSUED', { username: decoded.username, clientId: client_id, scope: effectiveScope, ip });
@@ -502,8 +502,8 @@ async function handleToken(req, res, ip) {
 
     if (!grant_type || !['authorization_code', 'refresh_token'].includes(grant_type))
         return res.status(400).json({ error: 'unsupported_grant_type' });
-    if (!client_id     || typeof client_id     !== 'string' || client_id.length     > 128) return res.status(400).json({ error: 'invalid_request: client_id ขาด' });
-    if (!client_secret || typeof client_secret !== 'string' || client_secret.length > 256) return res.status(400).json({ error: 'invalid_request: client_secret ขาด' });
+    if (!client_id     || typeof client_id     !== 'string' || client_id.length     > 128) return res.status(400).json({ error: 'invalid_request: client_id is required' });
+    if (!client_secret || typeof client_secret !== 'string' || client_secret.length > 256) return res.status(400).json({ error: 'invalid_request: client_secret is required' });
 
     const tokenClient = await pool.connect();
     try {
@@ -530,8 +530,8 @@ async function handleToken(req, res, ip) {
         // GRANT: authorization_code
         // ══════════════════════════════════════════════════════
         if (grant_type === 'authorization_code') {
-            if (!code         || typeof code         !== 'string' || code.length         > 128) return res.status(400).json({ error: 'invalid_request: code ขาด' });
-            if (!redirect_uri || typeof redirect_uri !== 'string' || redirect_uri.length > 512) return res.status(400).json({ error: 'invalid_request: redirect_uri ขาด' });
+            if (!code         || typeof code         !== 'string' || code.length         > 128) return res.status(400).json({ error: 'invalid_request: code is required' });
+            if (!redirect_uri || typeof redirect_uri !== 'string' || redirect_uri.length > 512) return res.status(400).json({ error: 'invalid_request: redirect_uri is required' });
 
             // FOR UPDATE: lock row ป้องกัน concurrent redemption race condition
             const codeHash   = hashToken(code);
@@ -555,16 +555,16 @@ async function handleToken(req, res, ip) {
                 auditLog('OAUTH_TOKEN_CODE_REUSE', {
                     clientId: client_id, username: codeRow.username, ip, note: 'possible code interception'
                 });
-                return res.status(400).json({ error: 'invalid_grant: code ถูกใช้แล้ว' });
+                return res.status(400).json({ error: 'invalid_grant: code already used' });
             }
             if (new Date() > new Date(codeRow.expires_at)) {
                 await tokenClient.query('ROLLBACK');
-                return res.status(400).json({ error: 'invalid_grant: code หมดอายุแล้ว' });
+                return res.status(400).json({ error: 'invalid_grant: code has expired' });
             }
             if (codeRow.redirect_uri !== redirect_uri) {
                 await tokenClient.query('ROLLBACK');
                 auditLog('OAUTH_TOKEN_URI_MISMATCH', { clientId: client_id, ip });
-                return res.status(400).json({ error: 'invalid_grant: redirect_uri ไม่ตรง' });
+                return res.status(400).json({ error: 'invalid_grant: redirect_uri mismatch' });
             }
 
             // ── PKCE verification (RFC 7636 S256) ─────────────
@@ -574,7 +574,7 @@ async function handleToken(req, res, ip) {
                     code_verifier.length < 43 || code_verifier.length > 128) {
                     await tokenClient.query('ROLLBACK');
                     auditLog('OAUTH_TOKEN_PKCE_MISSING', { clientId: client_id, ip });
-                    return res.status(400).json({ error: 'invalid_grant: code_verifier ขาดหรือไม่ถูกต้อง' });
+                    return res.status(400).json({ error: 'invalid_grant: code_verifier missing or invalid' });
                 }
                 // S256: BASE64URL(SHA256(ASCII(code_verifier))) == code_challenge
                 const verifierHash = crypto
@@ -584,7 +584,7 @@ async function handleToken(req, res, ip) {
                 if (verifierHash !== codeRow.code_challenge) {
                     await tokenClient.query('ROLLBACK');
                     auditLog('OAUTH_TOKEN_PKCE_FAIL', { clientId: client_id, ip });
-                    return res.status(400).json({ error: 'invalid_grant: code_verifier ไม่ตรง' });
+                    return res.status(400).json({ error: 'invalid_grant: code_verifier mismatch' });
                 }
             }
 
@@ -630,7 +630,7 @@ async function handleToken(req, res, ip) {
         if (grant_type === 'refresh_token') {
             if (!refresh_token || typeof refresh_token !== 'string' || refresh_token.length > 128) {
                 await tokenClient.query('ROLLBACK');
-                return res.status(400).json({ error: 'invalid_request: refresh_token ขาด' });
+                return res.status(400).json({ error: 'invalid_request: refresh_token is required' });
             }
 
             const rtHash  = hashToken(refresh_token);
@@ -661,11 +661,11 @@ async function handleToken(req, res, ip) {
                 auditLog('OAUTH_REFRESH_REUSE_REVOKE_ALL', {
                     clientId: client_id, username: rt.username, ip, note: 'possible token theft'
                 });
-                return res.status(400).json({ error: 'invalid_grant: refresh_token ถูกใช้แล้ว' });
+                return res.status(400).json({ error: 'invalid_grant: refresh_token already used' });
             }
             if (new Date() > new Date(rt.expires_at)) {
                 await tokenClient.query('ROLLBACK');
-                return res.status(400).json({ error: 'invalid_grant: refresh_token หมดอายุ' });
+                return res.status(400).json({ error: 'invalid_grant: refresh_token has expired' });
             }
 
             // Revoke refresh token เก่า (rotation)
@@ -825,13 +825,13 @@ async function handleSsoExchange(req, res, ip) {
 
     const { token } = req.query;
     if (!token || typeof token !== 'string' || token.length > 36) {
-        return res.status(400).json({ error: 'invalid_request: token ขาดหรือไม่ถูกต้อง' });
+        return res.status(400).json({ error: 'invalid_request: missing or invalid token' });
     }
 
     // UUID format validation (sso_token ใช้ randomUUID)
     const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     if (!UUID_REGEX.test(token)) {
-        return res.status(400).json({ error: 'invalid_request: token รูปแบบไม่ถูกต้อง' });
+        return res.status(400).json({ error: 'invalid_request: invalid token format' });
     }
 
     const client = await pool.connect();
@@ -858,13 +858,13 @@ async function handleSsoExchange(req, res, ip) {
         if (row.used) {
             await client.query('ROLLBACK');
             auditLog('SSO_EXCHANGE_REUSE', { username: row.username, ip, note: 'possible token theft' });
-            return res.status(400).json({ error: 'invalid_token: token ถูกใช้แล้ว' });
+            return res.status(400).json({ error: 'invalid_token: token already used' });
         }
 
         if (new Date() > new Date(row.expires_at)) {
             await client.query('ROLLBACK');
             auditLog('SSO_EXCHANGE_EXPIRED', { ip });
-            return res.status(400).json({ error: 'invalid_token: token หมดอายุแล้ว' });
+            return res.status(400).json({ error: 'invalid_token: token has expired' });
         }
 
         // Mark as used — single-use
@@ -906,9 +906,9 @@ async function handleRevoke(req, res, ip) {
     if (!requireJson(req, res)) return;
     const { token, client_id, client_secret } = req.body;
 
-    if (!token         || typeof token         !== 'string' || token.length         > 128) return res.status(400).json({ error: 'invalid_request: token ขาด' });
-    if (!client_id     || typeof client_id     !== 'string' || client_id.length     > 128) return res.status(400).json({ error: 'invalid_request: client_id ขาด' });
-    if (!client_secret || typeof client_secret !== 'string' || client_secret.length > 256) return res.status(400).json({ error: 'invalid_request: client_secret ขาด' });
+    if (!token         || typeof token         !== 'string' || token.length         > 128) return res.status(400).json({ error: 'invalid_request: token is required' });
+    if (!client_id     || typeof client_id     !== 'string' || client_id.length     > 128) return res.status(400).json({ error: 'invalid_request: client_id is required' });
+    if (!client_secret || typeof client_secret !== 'string' || client_secret.length > 256) return res.status(400).json({ error: 'invalid_request: client_secret is required' });
 
     try {
         const clientResult = await pool.query(
@@ -961,6 +961,6 @@ export default async function handler(req, res) {
         case 'revoke':       return handleRevoke(req, res, ip);
         case 'sso-exchange': return handleSsoExchange(req, res, ip);
         default:
-            return res.status(404).json({ error: 'OAuth endpoint ไม่มีอยู่' });
+            return res.status(404).json({ error: 'OAuth endpoint not found' });
     }
 }

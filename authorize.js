@@ -121,6 +121,10 @@ async function handleAllow() {
 
 function handleDeny() {
   if (_isSubmitting) return;
+  if (!_oauthParams.redirectUri || !_oauthParams.state) {
+    showError('Cannot process denial — authorization parameters are missing.');
+    return;
+  }
   _isSubmitting = true;
   setSubmitting(true);
   const url = new URL(_oauthParams.redirectUri);
