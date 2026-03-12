@@ -146,6 +146,11 @@ async function handleRegister() {
                 updateStatus('success','✅ Account created! Check your email to verify before signing in.');
                 const form = document.getElementById('register-form');
                 if (form) form.hidden = true;
+                // [FIX] บันทึก next/redirect_back ไว้ใน sessionStorage
+                // เมื่อ user verify email แล้วกลับมา login ใหม่ params จะยังอยู่
+                const sp2 = new URLSearchParams(window.location.search);
+                const pendingNext = sp2.get('next') || sp2.get('redirect_back');
+                if (pendingNext) sessionStorage.setItem('post_verify_redirect', pendingNext);
             } else {
                 updateStatus('success','Account created! Redirecting…');
                 setTimeout(()=>window.location.href='/login',1500);
@@ -166,8 +171,11 @@ async function preLoginCheck() {
     // [FIX-REDIRECT] แยก 2 ประเภทออกจากกัน:
     //   nextUrl       = same-origin URL เช่น /oauth/authorize?... (redirect หลัง login ฝั่ง frontend)
     //   redirect_back = registered third-party callback URL (สำหรับ SSO token creation ใน auth API)
-    const nextUrl       = sp.get('next') || null;
-    const redirect_back = sp.get('redirect_back') || null;
+    // [FIX] restore next/redirect_back ที่ save ไว้ตอน register (กรณี verified=1 params หาย)
+    const pendingRedirect = sp.get('verified') ? sessionStorage.getItem('post_verify_redirect') : null;
+    if (pendingRedirect) sessionStorage.removeItem('post_verify_redirect');
+    const nextUrl       = sp.get('next')          || (pendingRedirect?.startsWith('/') ? pendingRedirect : null) || null;
+    const redirect_back = sp.get('redirect_back') || (pendingRedirect && !pendingRedirect.startsWith('/') ? pendingRedirect : null) || null;
 
     if (!username||!password) return updateStatus('danger','Please enter your username and password.');
     updateStatus('loading','Verifying your credentials…');

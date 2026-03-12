@@ -79,7 +79,15 @@ async function createApp() {
     const res  = await fetch('/api/oauth/clients', {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, redirect_uris: [uri] })
+      body: JSON.stringify({
+      name,
+      redirect_uris: [uri],
+      allowed_scopes: [
+        'profile',
+        ...(document.getElementById('scope-email')?.checked  ? ['email']  : []),
+        ...(document.getElementById('scope-openid')?.checked ? ['openid'] : []),
+      ],
+    })
     });
     const data = await res.json();
     if (!res.ok) { showCreateError(data.error || 'An error occurred. Please try again.'); return; }
