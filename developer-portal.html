@@ -31,6 +31,23 @@
     </div>
   </div>
 
+  <div class="confirm-overlay" id="rotate-overlay"
+       role="dialog" aria-modal="true" aria-labelledby="rotate-title-text"
+       hidden>
+    <div class="confirm-box">
+      <div class="confirm-icon" aria-hidden="true">🔄</div>
+      <div class="confirm-title" id="rotate-title-text">Rotate secret?</div>
+      <p class="confirm-msg">
+        You are about to rotate the secret for <strong class="confirm-app-name" id="rotate-app-name"></strong>.
+        All existing tokens will be revoked immediately.
+      </p>
+      <div class="confirm-actions">
+        <button class="btn-cancel"         id="btn-rotate-cancel"  type="button">Cancel</button>
+        <button class="btn-confirm-delete" id="btn-confirm-rotate" type="button" style="background:var(--color-warning,#f59e0b)">Rotate</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Portal -->
   <div class="portal-wrap portal--hidden" id="portal">
 

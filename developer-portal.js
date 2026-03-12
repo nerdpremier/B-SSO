@@ -4,6 +4,8 @@
 
 let pendingDeleteId   = null;
 let pendingDeleteName = null;
+let pendingRotateId   = null;
+let pendingRotateName = null;
 
 async function init() {
   let res;
@@ -117,15 +119,33 @@ function clearCreateStatus() {
 }
 
 function askRotate(clientId, appName) {
-  if (!confirm(`Rotate the client secret for "${appName}"?\n\nAll existing tokens will be revoked immediately.\nYou will need to update the secret in your application.`)) return;
-  doRotate(clientId);
+  pendingRotateId   = clientId;
+  pendingRotateName = appName;
+  document.getElementById('rotate-app-name').textContent = `"${appName}"`;
+  document.getElementById('rotate-overlay').hidden = false;
+}
+function closeRotate() {
+  pendingRotateId = null; pendingRotateName = null;
+  document.getElementById('rotate-overlay').hidden = true;
+}
+async function confirmRotate() {
+  if (!pendingRotateId) return;
+  const btn = document.getElementById('btn-confirm-rotate');
+  btn.disabled = true; btn.textContent = 'Rotating…';
+  const id = pendingRotateId;
+  closeRotate();
+  await doRotate(id);
+  btn.disabled = false; btn.textContent = 'Rotate';
 }
 async function doRotate(clientId) {
   try {
     const res  = await fetch('/api/oauth/clients', { method:'PATCH', credentials:'include', headers:{'Content-Type':'application/json'}, body:JSON.stringify({client_id:clientId}) });
     const data = await res.json();
     if (!res.ok) { alert(data.error||'Rotation failed. Please try again.'); return; }
-    alert(`✅ Secret rotated successfully!\n\nClient ID: ${data.client_id}\nNew Client Secret:\n${data.client_secret}\n\n⚠️ Copy and save this now — it cannot be viewed again.`);
+    document.getElementById('res-client-id').textContent     = data.client_id;
+    document.getElementById('res-client-secret').textContent = data.client_secret;
+    document.getElementById('result-box').hidden = false;
+    document.getElementById('result-box').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     loadApps();
   } catch { alert('Unable to connect to server. Please try again.'); }
 }
@@ -177,8 +197,10 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('copy-client-secret')?.addEventListener('click', function(){copyText('res-client-secret',this);});
   document.getElementById('btn-cancel')        ?.addEventListener('click', closeConfirm);
   document.getElementById('btn-confirm-delete')?.addEventListener('click', confirmDelete);
+  document.getElementById('btn-rotate-cancel') ?.addEventListener('click', closeRotate);
+  document.getElementById('btn-confirm-rotate')?.addEventListener('click', confirmRotate);
   document.getElementById('btn-logout')        ?.addEventListener('click', logout);
-  document.addEventListener('keydown', e=>{if(e.key==='Escape')closeConfirm();});
+  document.addEventListener('keydown', e=>{if(e.key==='Escape'){closeConfirm();closeRotate();}});
 });
 
 init();
