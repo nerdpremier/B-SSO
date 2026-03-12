@@ -1,49 +1,49 @@
 /*
  * style.css — CARS SSO
- * Design System: "Vault" — Dark refined security interface
+ * Design System: Meridian — split-panel light theme + Indigo accent
  * Fonts: DM Serif Display (headings) + DM Sans (body) + Space Mono (code)
  */
 
 /* ── Tokens ──────────────────────────────────────────────── */
 :root {
   /* Backgrounds */
-  --bg:         #07070F;
-  --bg-2:       #0D0D1A;
-  --surface:    #111120;
-  --surface-2:  #181828;
-  --surface-3:  #1F1F30;
+  --bg:         #F4F6FB;
+  --bg-2:       #EEF1F8;
+  --surface:    #FFFFFF;
+  --surface-2:  #F4F6FB;
+  --surface-3:  #EEF1F8;
 
   /* Borders */
-  --border:     rgba(255,255,255,0.07);
-  --border-h:   rgba(255,255,255,0.13);
-  --border-act: rgba(245,197,24,0.45);
+  --border:     #DDE3EE;
+  --border-h:   #B8C4DA;
+  --border-act: rgba(79,110,247,0.5);
 
   /* Text */
-  --ink:        #EDE9DF;
-  --ink-2:      #A09C90;
-  --ink-3:      #5E5B6E;
+  --ink:        #0C1425;
+  --ink-2:      #1E2D4A;
+  --ink-3:      #5A6A8A;
 
-  /* Gold accent */
-  --gold:       #F5C518;
-  --gold-d:     #D4A800;
-  --gold-l:     #FDF0A0;
-  --gold-bg:    rgba(245,197,24,0.08);
-  --gold-bd:    rgba(245,197,24,0.22);
-  --focus-ring: rgba(245,197,24,0.28);
+  /* Indigo accent — kept as --gold-* names so all var() refs still work */
+  --gold:       #4F6EF7;
+  --gold-d:     #3A56E0;
+  --gold-l:     #EDF1FF;
+  --gold-bg:    rgba(79,110,247,0.07);
+  --gold-bd:    rgba(79,110,247,0.22);
+  --focus-ring: rgba(79,110,247,0.22);
 
   /* Status */
-  --ok:         #2ECC8E;
-  --ok-bg:      rgba(46,204,142,0.08);
-  --ok-bd:      rgba(46,204,142,0.22);
-  --ok-text:    #1AAD73;
+  --ok:         #0EA472;
+  --ok-bg:      #EAFAF4;
+  --ok-bd:      #A7EDCE;
+  --ok-text:    #065F46;
 
-  --err:        #F55;
-  --err-bg:     rgba(255,85,85,0.08);
-  --err-bd:     rgba(255,85,85,0.22);
+  --err:        #E0393E;
+  --err-bg:     #FEF1F1;
+  --err-bd:     #FBBCBD;
 
-  --warn:       #F5A623;
-  --warn-bg:    rgba(245,166,35,0.08);
-  --warn-bd:    rgba(245,166,35,0.22);
+  --warn:       #D97706;
+  --warn-bg:    #FFFBEB;
+  --warn-bd:    #FDE68A;
 
   /* Typography */
   --font:       'DM Sans', sans-serif;
@@ -56,9 +56,8 @@
   --radius-btn: 10px;
 
   /* Shadows */
-  --shadow-sm:  0 1px 3px rgba(0,0,0,0.4), 0 4px 16px rgba(0,0,0,0.3);
-  --shadow:     0 4px 8px rgba(0,0,0,0.5), 0 20px 60px rgba(0,0,0,0.4);
-  --glow-gold:  0 0 24px rgba(245,197,24,0.18), 0 0 60px rgba(245,197,24,0.07);
+  --shadow-sm:  0 1px 3px rgba(12,20,37,0.05), 0 4px 14px rgba(12,20,37,0.07);
+  --shadow:     0 2px 6px rgba(12,20,37,0.06), 0 16px 48px rgba(12,20,37,0.10);
 }
 
 /* ── Reset ────────────────────────────────────────────────── */
@@ -80,9 +79,8 @@ body::before {
   content: '';
   position: fixed; inset: 0; z-index: 0;
   background:
-    radial-gradient(ellipse 80% 60% at 15% 10%, rgba(245,197,24,0.045) 0%, transparent 55%),
-    radial-gradient(ellipse 60% 50% at 85% 85%, rgba(80,60,200,0.06) 0%, transparent 55%),
-    radial-gradient(ellipse 50% 40% at 50% 50%, rgba(30,20,80,0.4) 0%, transparent 70%);
+    radial-gradient(ellipse 70% 50% at 20% 0%,  rgba(79,110,247,0.07) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 40% at 80% 90%, rgba(79,110,247,0.05) 0%, transparent 55%);
   pointer-events: none;
 }
 
@@ -90,8 +88,8 @@ body::before {
 body::after {
   content: '';
   position: fixed; inset: 0; z-index: 0;
-  background-image: radial-gradient(circle at 1px 1px, rgba(255,255,255,0.03) 1px, transparent 0);
-  background-size: 32px 32px;
+  background-image: radial-gradient(circle at 1px 1px, rgba(12,20,37,0.04) 1px, transparent 0);
+  background-size: 28px 28px;
   pointer-events: none;
 }
 
@@ -129,7 +127,7 @@ body.auth-pending .portal-wrap { visibility: hidden; }
   content: '';
   position: absolute; top: 0; left: 0; right: 0;
   height: 1px;
-  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.12) 35%, rgba(245,197,24,0.25) 50%, rgba(255,255,255,0.12) 65%, transparent 100%);
+  background: linear-gradient(90deg, transparent 0%, rgba(79,110,247,0.12) 35%, rgba(79,110,247,0.25) 50%, rgba(79,110,247,0.12) 65%, transparent 100%);
 }
 
 @keyframes cardIn {
@@ -216,7 +214,7 @@ body.auth-pending .portal-wrap { visibility: hidden; }
   content: '';
   flex-shrink: 0;
   width: 13px; height: 13px;
-  border: 2px solid rgba(245,197,24,0.25);
+  border: 2px solid rgba(79,110,247,0.25);
   border-top-color: var(--gold);
   border-radius: 50%;
   animation: spin .65s linear infinite;
@@ -296,7 +294,7 @@ body.auth-pending .portal-wrap { visibility: hidden; }
   background: var(--gold);
   border: none;
   border-radius: var(--radius-btn);
-  color: #0A0A0F;
+  color: #FFFFFF;
   font-family: var(--font);
   font-size: 14.5px;
   font-weight: 700;
@@ -304,11 +302,11 @@ body.auth-pending .portal-wrap { visibility: hidden; }
   text-align: center;
   position: relative; overflow: hidden;
   transition: background .2s, transform .14s, box-shadow .2s;
-  box-shadow: 0 2px 12px rgba(245,197,24,0.3);
+  box-shadow: 0 2px 12px rgba(79,110,247,0.3);
   margin-top: 4px;
   letter-spacing: .01em;
 }
-.btn-primary:hover  { background: var(--gold-l); box-shadow: 0 4px 20px rgba(245,197,24,0.4); }
+.btn-primary:hover  { background: var(--gold-l); box-shadow: 0 4px 20px rgba(79,110,247,0.4); }
 .btn-primary:active { transform: translateY(1px); }
 .btn-primary:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow: none; }
 .btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
@@ -448,7 +446,7 @@ body.auth-pending .portal-wrap { visibility: hidden; }
 /* ── Welcome page ────────────────────────────────────────────── */
 .auth-card--centered            { text-align: center; }
 .brand-row--centered            { justify-content: center; }
-.welcome-check                  { font-size: 40px; margin-bottom: 16px; }
+.welcome-check                  { font-size: 40px; margin-bottom: 16px; color: var(--gold); }
 
 .session-badge {
   display: inline-flex; align-items: center; gap: 8px;
