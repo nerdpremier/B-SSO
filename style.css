@@ -1,12 +1,4 @@
-/*
- * style.css — CARS SSO
- * Design: Meridian — animated particle background, step flow, page transitions
- * Fonts: DM Serif Display (headings) + DM Sans (body) + Space Mono (mono)
- */
 
-/* ═══════════════════════════════════════════════════════════
-   1. TOKENS
-   ═══════════════════════════════════════════════════════════ */
 :root {
   --navy:        #0C1425;
   --navy-2:      #1A2744;
