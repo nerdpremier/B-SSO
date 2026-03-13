@@ -485,11 +485,12 @@ export default async function handler(req, res) {
                 if (redirect_back && user?.id) {
                     const isValidRedirect = await validateRedirectBack(redirect_back);
                     if (isValidRedirect) {
-                        const sso_token = crypto.randomUUID();
+                        const sso_token      = crypto.randomUUID();
+                        const sso_token_hash = crypto.createHash('sha256').update(sso_token).digest('hex');
                         try {
                             await pool.query(
                                 'INSERT INTO sso_tokens (token, user_id) VALUES ($1, $2)',
-                                [sso_token, user.id]
+                                [sso_token_hash, user.id]
                             );
                             redirectUrl = `${redirect_back}?sso_token=${sso_token}`;
                         } catch (ssoErr) {

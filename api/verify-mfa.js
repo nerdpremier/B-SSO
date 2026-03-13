@@ -161,7 +161,7 @@ export default async function handler(req, res) {
             if (!timingSafeHashEqual(row.mfa_code, inputHash)) {
                 await client.query('COMMIT'); // commit attempt counter
                 auditLog('MFA_WRONG_CODE', { username, ip });
-                return res.status(401).json({ error: 'Invalid OTP format' });
+                return res.status(400).json({ error: 'Incorrect code. Please try again.' });
             }
 
             // ── MFA passed — mark logId as used ──────────────
@@ -200,11 +200,12 @@ export default async function handler(req, res) {
             if (redirect_back && row.user_id) {
                 const isValidRedirect = await validateRedirectBack(redirect_back);
                 if (isValidRedirect) {
-                    const sso_token = crypto.randomUUID();
+                    const sso_token      = crypto.randomUUID();
+                    const sso_token_hash = crypto.createHash('sha256').update(sso_token).digest('hex');
                     try {
                         await pool.query(
                             'INSERT INTO sso_tokens (token, user_id) VALUES ($1, $2)',
-                            [sso_token, row.user_id]
+                            [sso_token_hash, row.user_id]
                         );
                         redirectUrl = `${redirect_back}?sso_token=${sso_token}`;
                     } catch (ssoErr) {

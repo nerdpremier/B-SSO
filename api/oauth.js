@@ -25,6 +25,7 @@ import '../startup-check.js';
 import { pool }           from '../lib/db.js';
 import { checkRateLimit } from '../lib/rate-limit.js';
 import { getClientIp }    from '../lib/ip-utils.js';
+import { validateCsrfToken } from '../lib/csrf-utils.js';
 import jwt    from 'jsonwebtoken';
 import { parse } from 'cookie';
 import { auditLog } from '../lib/response-utils.js';
@@ -77,26 +78,6 @@ function safeHexEqual(a, b) {
         return crypto.timingSafeEqual(Buffer.from(a, 'hex'), Buffer.from(b, 'hex'));
     } catch {
         return false;
-    }
-}
-
-// verifyBearerSession: ตรวจ JWT จาก Authorization: Bearer header
-// ใช้เฉพาะ /clients endpoint (developer API)
-// คืน decoded payload ถ้า valid, null ถ้าไม่ valid
-function verifyBearerSession(req) {
-    const auth = req.headers.authorization;
-    if (!auth?.startsWith('Bearer ')) return null;
-    const token = auth.slice(7);
-    try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET, {
-            issuer: 'auth-service', audience: 'api'
-        });
-        if (!decoded.jti) return null;
-        if (!decoded.username || typeof decoded.username !== 'string' ||
-            decoded.username.length > 32 || !USER_REGEX.test(decoded.username)) return null;
-        return decoded;
-    } catch {
-        return null;
     }
 }
 
@@ -402,6 +383,13 @@ async function handleAuthorize(req, res, ip) {
     // ── POST: รับผลการตัดสินใจ Allow / Deny ───────────────
     if (req.method === 'POST') {
         if (!requireJson(req, res)) return;
+
+        // CSRF: ป้องกัน cross-site form submission ที่หลอกให้ user allow โดยไม่รู้ตัว
+        // authorize.js ส่ง X-CSRF-Token header พร้อมทุก POST
+        if (!validateCsrfToken(req)) {
+            return res.status(403).json({ error: 'invalid_request: CSRF token invalid or missing' });
+        }
+
         const { client_id, redirect_uri, state, approved,
                 scope, code_challenge, code_challenge_method } = req.body;
 
@@ -828,11 +816,14 @@ async function handleSsoExchange(req, res, ip) {
         return res.status(400).json({ error: 'invalid_request: missing or invalid token' });
     }
 
-    // UUID format validation (sso_token ใช้ randomUUID)
+    // UUID format validation (sso_token ใช้ randomUUID ก่อน hash)
     const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     if (!UUID_REGEX.test(token)) {
         return res.status(400).json({ error: 'invalid_request: invalid token format' });
     }
+
+    // [BUG-005 FIX] hash token ก่อน lookup — DB เก็บ hash ไม่ใช่ raw UUID
+    const tokenHash = hashToken(token);
 
     const client = await pool.connect();
     try {
@@ -844,7 +835,7 @@ async function handleSsoExchange(req, res, ip) {
              FROM sso_tokens st
              JOIN users u ON u.id = st.user_id
              WHERE st.token = $1 FOR UPDATE`,
-            [token]
+            [tokenHash]
         );
 
         if (result.rows.length === 0) {

@@ -12,6 +12,20 @@
 let _oauthParams  = {};
 let _isSubmitting = false;
 
+// ── CSRF ──────────────────────────────────────────────────────
+// handleAllow ส่ง POST ไป /api/oauth/authorize ต้องแนบ CSRF token
+// ใช้ pattern เดียวกับ script.js (double-submit cookie)
+let _csrfToken = null;
+async function getCsrfToken() {
+  if (_csrfToken) return _csrfToken;
+  const res = await fetch('/api/csrf', { credentials: 'include' });
+  if (!res.ok) throw new Error('Unable to fetch CSRF token');
+  const data = await res.json();
+  if (typeof data.token !== 'string' || !data.token) throw new Error('Invalid CSRF token');
+  _csrfToken = data.token;
+  return _csrfToken;
+}
+
 const $id = id => document.getElementById(id);
 
 function showStatus(msg, type = 'danger') {
@@ -146,12 +160,31 @@ async function handleAllow() {
       body.code_challenge_method = _oauthParams.codeChallengeMethod;
     }
 
+    const csrfToken = await getCsrfToken();
     const res = await fetch('/api/oauth/authorize', {
       method: 'POST', credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
       body: JSON.stringify(body),
     });
-    const data = await res.json();
+    // auto-retry หาก CSRF หมดอายุ
+    let data = await res.json();
+    if (res.status === 403) {
+      _csrfToken = null;
+      const csrfToken2 = await getCsrfToken();
+      const res2 = await fetch('/api/oauth/authorize', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken2 },
+        body: JSON.stringify(body),
+      });
+      data = await res2.json();
+      if (!res2.ok) {
+        if (res2.status === 401) { window.location.replace(`/login?next=${encodeURIComponent(window.location.href)}`); return; }
+        showStatus(data?.error || 'An error occurred. Please try again.');
+        setSubmitting(false); _isSubmitting = false; return;
+      }
+      window.location.replace(data.redirect_url);
+      return;
+    }
 
     if (!res.ok) {
       if (res.status === 401) {
@@ -171,18 +204,37 @@ async function handleAllow() {
   }
 }
 
-function handleDeny() {
+async function handleDeny() {
   if (_isSubmitting) return;
-  if (!_oauthParams.redirectUri || !_oauthParams.state) {
+  if (!_oauthParams.clientId || !_oauthParams.redirectUri || !_oauthParams.state) {
     showError('Cannot process denial — authorization parameters are missing.');
     return;
   }
   _isSubmitting = true;
   setSubmitting(true);
-  const url = new URL(_oauthParams.redirectUri);
-  url.searchParams.set('error', 'access_denied');
-  url.searchParams.set('state', _oauthParams.state);
-  window.location.replace(url.toString());
+  try {
+    const csrfToken = await getCsrfToken();
+    const res = await fetch('/api/oauth/authorize', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+      body: JSON.stringify({
+        client_id:    _oauthParams.clientId,
+        redirect_uri: _oauthParams.redirectUri,
+        state:        _oauthParams.state,
+        approved:     false,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      if (res.status === 401) { window.location.replace(`/login?next=${encodeURIComponent(window.location.href)}`); return; }
+      showError(data?.error || 'An error occurred.');
+      setSubmitting(false); _isSubmitting = false; return;
+    }
+    window.location.replace(data.redirect_url);
+  } catch {
+    showError('Unable to connect to server. Please try again.');
+    setSubmitting(false); _isSubmitting = false;
+  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {

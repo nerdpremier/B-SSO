@@ -100,7 +100,7 @@ function getSecureFp() {
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function validateEmail(e)    { return (!e || !EMAIL_REGEX.test(e)) ? 'Please enter a valid email address.' : null; }
 function validatePassword(p) {
-    const r = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+    const r = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#^_\-+=()])[A-Za-z\d@$!%*?&#^_\-+=()]{8,}$/;
     return (p && !r.test(p)) ? 'Password must be 8+ characters with uppercase, lowercase, a number, and a symbol.' : null;
 }
 function validateInputs(u, p) {
@@ -116,7 +116,7 @@ const PASSWORD_RULES = [
     { id:'rule-upper',   test: p=>/[A-Z]/.test(p),    label:'Uppercase letter (A–Z)' },
     { id:'rule-lower',   test: p=>/[a-z]/.test(p),    label:'Lowercase letter (a–z)' },
     { id:'rule-number',  test: p=>/\d/.test(p),        label:'Number (0–9)' },
-    { id:'rule-special', test: p=>/[@$!%*?&]/.test(p), label:'Symbol (@$!%*?&)' },
+    { id:'rule-special', test: p=>/[@$!%*?&#^_\-+=()]/.test(p), label:'Symbol (@$!%*?&#^_-+=())' },
 ];
 function checkPasswordStrength(password) {
     PASSWORD_RULES.forEach(({ id, test, label }) => {
@@ -174,7 +174,11 @@ async function preLoginCheck() {
     // [FIX] restore next/redirect_back ที่ save ไว้ตอน register (กรณี verified=1 params หาย)
     const pendingRedirect = sp.get('verified') ? sessionStorage.getItem('post_verify_redirect') : null;
     if (pendingRedirect) sessionStorage.removeItem('post_verify_redirect');
-    const nextUrl       = sp.get('next')          || (pendingRedirect?.startsWith('/') ? pendingRedirect : null) || null;
+
+    // [SECURITY] nextUrl ต้องเป็น same-origin เท่านั้น (ต้องขึ้นต้นด้วย '/' และไม่ใช่ '//')
+    // sp.get('next') อาจเป็น 'https://evil.com' ถ้า attacker inject ?next=https://evil.com
+    const rawNext = sp.get('next') || (pendingRedirect?.startsWith('/') ? pendingRedirect : null) || null;
+    const nextUrl = (rawNext && rawNext.startsWith('/') && !rawNext.startsWith('//')) ? rawNext : null;
     const redirect_back = sp.get('redirect_back') || (pendingRedirect && !pendingRedirect.startsWith('/') ? pendingRedirect : null) || null;
 
     if (!username||!password) return updateStatus('danger','Please enter your username and password.');

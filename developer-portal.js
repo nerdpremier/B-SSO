@@ -7,6 +7,38 @@ let pendingDeleteName = null;
 let pendingRotateId   = null;
 let pendingRotateName = null;
 
+// ── CSRF ─────────────────────────────────────────────────────
+let _csrfToken = null;
+async function getCsrfToken() {
+  if (_csrfToken) return _csrfToken;
+  const res = await fetch('/api/csrf', { credentials: 'include' });
+  if (!res.ok) throw new Error('Unable to fetch CSRF token');
+  const data = await res.json();
+  if (typeof data.token !== 'string' || !data.token) throw new Error('Invalid CSRF token');
+  _csrfToken = data.token;
+  return _csrfToken;
+}
+// apiFetch: ใช้สำหรับ mutating requests (POST/PATCH/DELETE) เท่านั้น
+// แนบ X-CSRF-Token ทุกครั้ง + auto-retry เมื่อ token หมดอายุ (403)
+async function apiFetch(url, options = {}) {
+  const token = await getCsrfToken();
+  const res = await fetch(url, {
+    ...options,
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token, ...(options.headers || {}) },
+  });
+  if (res.status === 403) {
+    _csrfToken = null;
+    const token2 = await getCsrfToken();
+    return fetch(url, {
+      ...options,
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token2, ...(options.headers || {}) },
+    });
+  }
+  return res;
+}
+
 async function init() {
   let res;
   try { res = await fetch('/api/session', { credentials: 'include' }); }
@@ -78,9 +110,8 @@ async function createApp() {
 
   btn.disabled = true; btn.textContent = 'Creating…';
   try {
-    const res  = await fetch('/api/oauth/clients', {
-      method: 'POST', credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
+    const res  = await apiFetch('/api/oauth/clients', {
+      method: 'POST',
       body: JSON.stringify({
       name,
       redirect_uris: [uri],
@@ -139,7 +170,7 @@ async function confirmRotate() {
 }
 async function doRotate(clientId) {
   try {
-    const res  = await fetch('/api/oauth/clients', { method:'PATCH', credentials:'include', headers:{'Content-Type':'application/json'}, body:JSON.stringify({client_id:clientId}) });
+    const res  = await apiFetch('/api/oauth/clients', { method:'PATCH', body:JSON.stringify({client_id:clientId}) });
     const data = await res.json();
     if (!res.ok) { alert(data.error||'Rotation failed. Please try again.'); return; }
     document.getElementById('res-client-id').textContent     = data.client_id;
@@ -165,7 +196,7 @@ async function confirmDelete() {
   const btn = document.getElementById('btn-confirm-delete');
   btn.disabled = true; btn.textContent = 'Deleting…';
   try {
-    const res = await fetch('/api/oauth/clients', { method:'DELETE', credentials:'include', headers:{'Content-Type':'application/json'}, body:JSON.stringify({client_id:pendingDeleteId}) });
+    const res = await apiFetch('/api/oauth/clients', { method:'DELETE', body:JSON.stringify({client_id:pendingDeleteId}) });
     if (!res.ok) { const d=await res.json(); alert(d.error||'Delete failed. Please try again.'); return; }
     closeConfirm(); loadApps();
   } catch { alert('Unable to connect to server. Please try again.'); }
@@ -173,7 +204,7 @@ async function confirmDelete() {
 }
 
 async function logout() {
-  try { await fetch('/api/logout',{method:'POST',credentials:'include'}); } catch {}
+  try { await apiFetch('/api/logout',{method:'POST'}); } catch {}
   location.replace('/login');
 }
 
