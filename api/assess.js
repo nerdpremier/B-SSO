@@ -21,6 +21,7 @@ import '../startup-check.js';
 import { pool }             from '../lib/db.js';
 import { checkRateLimit }   from '../lib/rate-limit.js';
 import { getClientIp }      from '../lib/ip-utils.js';
+import { LOGID_TTL_MINUTES } from '../lib/constants.js';
 import { validateCsrfToken } from '../lib/csrf-utils.js';
 import {
     setSecurityHeaders, auditLog,
@@ -117,8 +118,8 @@ export default async function handler(req, res) {
                  FROM login_risks
                  WHERE username = $1
                    AND is_success = FALSE
-                   AND created_at > NOW() - INTERVAL '60 seconds'`,
-                [username]
+                   AND created_at > NOW() - make_interval(mins => $2)`,
+                [username, LOGID_TTL_MINUTES]
             );
 
             const fp_match       = deviceRes.rows.length > 0;

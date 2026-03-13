@@ -175,10 +175,25 @@ async function preLoginCheck() {
     const pendingRedirect = sp.get('verified') ? sessionStorage.getItem('post_verify_redirect') : null;
     if (pendingRedirect) sessionStorage.removeItem('post_verify_redirect');
 
-    // [SECURITY] nextUrl ต้องเป็น same-origin เท่านั้น (ต้องขึ้นต้นด้วย '/' และไม่ใช่ '//')
-    // sp.get('next') อาจเป็น 'https://evil.com' ถ้า attacker inject ?next=https://evil.com
+    // [SECURITY] nextUrl ต้องเป็น same-origin เท่านั้น
+    // รองรับทั้ง path ('/developer') และ full same-origin URL ('https://sso.example.com/developer')
+    // ป้องกัน open redirect: full URL ต้องมี origin ตรงกับ window.location.origin
     const rawNext = sp.get('next') || (pendingRedirect?.startsWith('/') ? pendingRedirect : null) || null;
-    const nextUrl = (rawNext && rawNext.startsWith('/') && !rawNext.startsWith('//')) ? rawNext : null;
+    let nextUrl = null;
+    if (rawNext) {
+        if (rawNext.startsWith('/') && !rawNext.startsWith('//') && !rawNext.startsWith('/\\')) {
+            // path-only: /developer, /oauth/authorize?...
+            nextUrl = rawNext;
+        } else {
+            try {
+                const u = new URL(rawNext);
+                // full URL ต้อง same-origin เท่านั้น → extract path+search+hash
+                if (u.origin === window.location.origin) {
+                    nextUrl = u.pathname + u.search + u.hash;
+                }
+            } catch { /* ไม่ใช่ URL ที่ valid — ไม่ redirect */ }
+        }
+    }
     const redirect_back = sp.get('redirect_back') || (pendingRedirect && !pendingRedirect.startsWith('/') ? pendingRedirect : null) || null;
 
     if (!username||!password) return updateStatus('danger','Please enter your username and password.');
@@ -260,7 +275,17 @@ async function verifyMFA() {
             setTimeout(()=>window.location.href=dest,1000);
         } else {
             const data = await res.json();
-            updateStatus('danger', data.error||'Invalid code. Please try again.');
+            const msg = data.error || 'Invalid code. Please try again.';
+            // [FIX] ถ้า server บอกให้ sign in ใหม่ (logId exhausted / session expired)
+            // → ล้าง sessionStorage ทั้งหมด แล้ว redirect กลับ /login อัตโนมัติ
+            if (res.status === 429 || (typeof msg === 'string' && msg.toLowerCase().includes('sign in again'))) {
+                ['mfa_logId','mfa_username','mfa_remember','mfa_fingerprint',
+                 'mfa_redirect_back','mfa_next_url'].forEach(k=>sessionStorage.removeItem(k));
+                updateStatus('danger', msg + ' Redirecting…');
+                setTimeout(()=>window.location.replace('/login'), 2000);
+            } else {
+                updateStatus('danger', msg);
+            }
         }
     } catch (err) { updateStatus('danger', err.name==='AbortError'?'Request timed out.':'Something went wrong.'); }
 }
@@ -273,7 +298,18 @@ async function resendMFA() {
         const res=await secureFetch('/api/mfa',{method:'POST',body:JSON.stringify({action:'resend',logId,username})});
         const data=await res.json();
         if (res.ok) { startResendCooldown(60); updateStatus('success','A new code has been sent. Check your email.'); }
-        else updateStatus('danger',data.error||'Failed to resend. Please try again.');
+        else {
+            const msg = data.error || 'Failed to resend. Please try again.';
+            // [FIX] ถ้า server บอกให้ sign in ใหม่ → ล้าง sessionStorage + redirect
+            if (res.status === 429 || (typeof msg === 'string' && msg.toLowerCase().includes('sign in again'))) {
+                ['mfa_logId','mfa_username','mfa_remember','mfa_fingerprint',
+                 'mfa_redirect_back','mfa_next_url'].forEach(k=>sessionStorage.removeItem(k));
+                updateStatus('danger', msg + ' Redirecting…');
+                setTimeout(()=>window.location.replace('/login'), 2000);
+            } else {
+                updateStatus('danger', msg);
+            }
+        }
     } catch (err) { updateStatus('danger', err.name==='AbortError'?'Request timed out.':'Something went wrong.'); }
 }
 function startResendCooldown(seconds) {

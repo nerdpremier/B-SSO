@@ -212,19 +212,38 @@ async function handleDeny() {
   }
   _isSubmitting = true;
   setSubmitting(true);
+  const denyBody = JSON.stringify({
+    client_id:    _oauthParams.clientId,
+    redirect_uri: _oauthParams.redirectUri,
+    state:        _oauthParams.state,
+    approved:     false,
+  });
   try {
     const csrfToken = await getCsrfToken();
     const res = await fetch('/api/oauth/authorize', {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
-      body: JSON.stringify({
-        client_id:    _oauthParams.clientId,
-        redirect_uri: _oauthParams.redirectUri,
-        state:        _oauthParams.state,
-        approved:     false,
-      }),
+      body: denyBody,
     });
-    const data = await res.json();
+    let data = await res.json();
+    // [FIX] CSRF 403 retry — same pattern as handleAllow()
+    if (res.status === 403) {
+      _csrfToken = null;
+      const csrfToken2 = await getCsrfToken();
+      const res2 = await fetch('/api/oauth/authorize', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken2 },
+        body: denyBody,
+      });
+      data = await res2.json();
+      if (!res2.ok) {
+        if (res2.status === 401) { window.location.replace(`/login?next=${encodeURIComponent(window.location.href)}`); return; }
+        showError(data?.error || 'An error occurred.');
+        setSubmitting(false); _isSubmitting = false; return;
+      }
+      window.location.replace(data.redirect_url);
+      return;
+    }
     if (!res.ok) {
       if (res.status === 401) { window.location.replace(`/login?next=${encodeURIComponent(window.location.href)}`); return; }
       showError(data?.error || 'An error occurred.');
@@ -237,8 +256,23 @@ async function handleDeny() {
   }
 }
 
+// [FIX] handleSignOut: POST /api/logout แล้ว redirect ไป /login
+// เดิม authorize.html มี <a href="/logout"> ซึ่งไม่มี route ใน vercel.json → 404
+// ผู้ใช้ที่ต้องการ sign out ก่อน authorize จะทำไม่ได้
+async function handleSignOut() {
+  try {
+    const csrfToken = await getCsrfToken();
+    await fetch('/api/logout', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+    });
+  } catch { /* ไม่สนใจ error — redirect ต่อเสมอ */ }
+  window.location.replace('/login');
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-  $id('btn-allow')?.addEventListener('click', handleAllow);
-  $id('btn-deny')?.addEventListener('click',  handleDeny);
+  $id('btn-allow')  ?.addEventListener('click', handleAllow);
+  $id('btn-deny')   ?.addEventListener('click', handleDeny);
+  $id('btn-signout')?.addEventListener('click', handleSignOut);
   init();
 });

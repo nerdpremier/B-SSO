@@ -259,12 +259,14 @@ export default async function handler(req, res) {
             if (verifyInserted) {
                 const baseUrl     = process.env.BASE_URL;
                 const verifyLink  = `${baseUrl}/api/auth?action=verify-email&token=${rawVerifyToken}`;
+                // [FIX] escape username ก่อน embed ใน HTML ป้องกัน injection ถ้า USER_REGEX เปลี่ยนในอนาคต
+                const safeUsername = username.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
                 try {
                     await mailTransporter.sendMail({
                         from:    `"CARS SSO" <${process.env.EMAIL_USER}>`,
                         to:      emailNormalized,
                         subject: '✅ Verify your email — CARS SSO',
-                        html:    `<h2>Welcome, ${username}!</h2>
+                        html:    `<h2>Welcome, ${safeUsername}!</h2>
                                   <p>Click the link below to verify your email address:</p>
                                   <p><a href="${verifyLink}">${verifyLink}</a></p>
                                   <p>This link expires in 24 hours.</p>

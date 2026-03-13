@@ -20,7 +20,7 @@ import { hashMfaCode }         from '../lib/mfa-utils.js';
 import { validateRedirectBack } from '../lib/redirect-utils.js';
 import {
     setSecurityHeaders, auditLog,
-    USER_REGEX, LOGID_STRING_REGEX,
+    USER_REGEX, SAFE_STRING_REGEX, LOGID_STRING_REGEX,
     isJsonContentType, isValidBody,
 } from '../lib/response-utils.js';
 import jwt         from 'jsonwebtoken';
@@ -170,11 +170,17 @@ export default async function handler(req, res) {
                 [parsedLogId]
             );
 
-            // remember me
-            if ((remember === true || remember === 'true') && req.body.fingerprint) {
+            // remember me — validate fingerprint before INSERT (security: prevent unvalidated data in user_devices)
+            const fpValue = req.body.fingerprint;
+            const isFpValid = fpValue !== undefined
+                && typeof fpValue === 'string'
+                && fpValue.length > 0
+                && fpValue.length <= 256
+                && SAFE_STRING_REGEX.test(fpValue);
+            if ((remember === true || remember === 'true') && isFpValid) {
                 await client.query(
                     'INSERT INTO user_devices (username, fingerprint) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-                    [username, req.body.fingerprint]
+                    [username, fpValue]
                 );
             }
 

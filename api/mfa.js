@@ -11,10 +11,12 @@
 // ============================================================
 import verifyHandler from './verify-mfa.js';
 import resendHandler from './resend-mfa.js';
+import { setSecurityHeaders } from '../lib/response-utils.js';
 
 export default async function handler(req, res) {
     const action = req.body?.action;
     if (action === 'verify') return verifyHandler(req, res);
     if (action === 'resend') return resendHandler(req, res);
+    setSecurityHeaders(res);
     return res.status(400).json({ error: 'Invalid action. Use action: "verify" or "resend"' });
 }

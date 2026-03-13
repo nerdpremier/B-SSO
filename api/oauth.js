@@ -292,12 +292,40 @@ async function handleClients(req, res, ip) {
             if (!client_id || typeof client_id !== 'string' || client_id.length > 128)
                 return res.status(400).json({ error: 'client_id is required' });
 
-            const result = await pool.query(
-                'DELETE FROM oauth_clients WHERE client_id = $1 AND owner_username = $2',
-                [client_id, username]
-            );
-            if (result.rowCount === 0)
-                return res.status(404).json({ error: 'App not found or does not belong to you' });
+            const deleteClient = await pool.connect();
+            try {
+                await deleteClient.query('BEGIN');
+
+                // ตรวจเจ้าของก่อนลบ (ป้องกัน delete client ของคนอื่น)
+                const ownerCheck = await deleteClient.query(
+                    'SELECT client_id FROM oauth_clients WHERE client_id = $1 AND owner_username = $2',
+                    [client_id, username]
+                );
+                if (ownerCheck.rowCount === 0) {
+                    await deleteClient.query('ROLLBACK');
+                    return res.status(404).json({ error: 'App not found or does not belong to you' });
+                }
+
+                // Revoke tokens ทั้งหมดของ client นี้ก่อนลบ
+                // ป้องกัน: ลบ client แล้ว tokens ยังใช้ได้ (ถ้าไม่มี CASCADE DELETE ใน schema)
+                await deleteClient.query(
+                    `UPDATE oauth_tokens SET revoked_at = NOW()
+                     WHERE client_id = $1 AND revoked_at IS NULL`,
+                    [client_id]
+                );
+
+                await deleteClient.query(
+                    'DELETE FROM oauth_clients WHERE client_id = $1 AND owner_username = $2',
+                    [client_id, username]
+                );
+
+                await deleteClient.query('COMMIT');
+            } catch (err) {
+                try { await deleteClient.query('ROLLBACK'); } catch { /* ignore */ }
+                throw err;
+            } finally {
+                deleteClient.release();
+            }
 
             auditLog('OAUTH_CLIENT_DELETED', { username, clientId: client_id, ip });
             return res.status(200).json({ success: true });
@@ -569,7 +597,21 @@ async function handleToken(req, res, ip) {
                     .createHash('sha256')
                     .update(code_verifier)
                     .digest('base64url');
-                if (verifierHash !== codeRow.code_challenge) {
+                // [FIX] timing-safe comparison ป้องกัน timing oracle บน PKCE challenge
+                // !== คืนเร็วเมื่อ prefix ต่างกัน → attacker retry code เดิม (used=FALSE จาก ROLLBACK)
+                // แล้ววัด response time เพื่อ brute-force code_verifier ทีละ character
+                // แก้: เปรียบเทียบ Base64URL string ผ่าน Buffer.from() + timingSafeEqual
+                // Base64URL ใช้ alphabet [A-Za-z0-9\-_=] ซึ่ง valid UTF-8 ทุกตัว → Buffer.from safe
+                let pkceMatch = false;
+                try {
+                    const verifierBuf  = Buffer.from(verifierHash,           'utf8');
+                    const challengeBuf = Buffer.from(codeRow.code_challenge, 'utf8');
+                    pkceMatch = verifierBuf.length === challengeBuf.length &&
+                        crypto.timingSafeEqual(verifierBuf, challengeBuf);
+                } catch {
+                    pkceMatch = false;
+                }
+                if (!pkceMatch) {
                     await tokenClient.query('ROLLBACK');
                     auditLog('OAUTH_TOKEN_PKCE_FAIL', { clientId: client_id, ip });
                     return res.status(400).json({ error: 'invalid_grant: code_verifier mismatch' });
@@ -831,7 +873,7 @@ async function handleSsoExchange(req, res, ip) {
 
         // FOR UPDATE: ป้องกัน concurrent exchange race condition
         const result = await client.query(
-            `SELECT st.id, st.user_id, st.used, st.expires_at, u.username, u.email
+            `SELECT st.id, st.user_id, st.used, st.expires_at, u.username, u.email, u.email_verified
              FROM sso_tokens st
              JOIN users u ON u.id = st.user_id
              WHERE st.token = $1 FOR UPDATE`,
@@ -870,6 +912,9 @@ async function handleSsoExchange(req, res, ip) {
         return res.status(200).json({
             user_id:  row.user_id,
             username: row.username,
+            // [FIX] คืน email เฉพาะ email_verified = TRUE เพื่อไม่ leak unverified address
+            // ช่วยให้ third-party app ที่รับ sso_token ไม่ต้องเรียก /userinfo ซ้ำ
+            ...(row.email_verified ? { email: row.email } : {}),
         });
 
     } catch (err) {
@@ -914,15 +959,27 @@ async function handleRevoke(req, res, ip) {
             return res.status(401).json({ error: 'invalid_client' });
         }
 
-        // Revoke เฉพาะ token ที่เป็นของ client นี้ ป้องกัน cross-client revocation
-        // คืน 200 เสมอ ไม่ว่า token จะมีอยู่หรือไม่ (ตาม RFC 7009)
-        const result = await pool.query(
-            `UPDATE oauth_tokens SET revoked_at = NOW()
-             WHERE token_hash = $1 AND client_id = $2 AND revoked_at IS NULL`,
-            [hashToken(token), client_id]
+        // [FIX] RFC 7009 section 2: revoke associated tokens ด้วย
+        // หา username + token_type จาก token ที่ส่งมา แล้ว revoke ทั้ง access + refresh
+        // ของ client+user นั้น ป้องกัน: revoke access_token แต่ refresh_token ยังขอใหม่ได้
+        const targetHash = hashToken(token);
+        const tokenRow = await pool.query(
+            `SELECT username, token_type FROM oauth_tokens
+             WHERE token_hash = $1 AND client_id = $2`,
+            [targetHash, client_id]
         );
-        if (result.rowCount > 0) auditLog('OAUTH_TOKEN_REVOKED', { clientId: client_id, ip });
 
+        if (tokenRow.rows.length > 0) {
+            const { username: tokenUsername } = tokenRow.rows[0];
+            // Revoke ทั้ง access + refresh ของ client+user นี้ (ไม่เฉพาะ token ที่ส่งมา)
+            const result = await pool.query(
+                `UPDATE oauth_tokens SET revoked_at = NOW()
+                 WHERE client_id = $1 AND username = $2 AND revoked_at IS NULL`,
+                [client_id, tokenUsername]
+            );
+            if (result.rowCount > 0) auditLog('OAUTH_TOKEN_REVOKED', { clientId: client_id, username: tokenUsername, ip });
+        }
+        // คืน 200 เสมอ ไม่ว่า token จะมีอยู่หรือไม่ (ตาม RFC 7009)
         return res.status(200).json({ success: true });
 
     } catch (err) {
