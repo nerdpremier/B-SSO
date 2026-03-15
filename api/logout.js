@@ -29,6 +29,58 @@ export default async function handler(req, res) {
 
     const ip = getClientIp(req);
 
+    // ── GET: logout-redirect (browser GET จาก client app) ────
+    // ล้าง session แล้ว redirect กลับไปที่ redirect_uri
+    if (req.method === 'GET' && req.url?.includes('logout-redirect')) {
+        const rawUrl    = req.url || '';
+        const urlObj    = new URL(rawUrl, `https://${req.headers.host}`);
+        const redirectTo = urlObj.searchParams.get('redirect_uri');
+
+        // ตรวจ redirect_uri ต้อง https เท่านั้น
+        let safeRedirect = null;
+        if (redirectTo) {
+            try {
+                const parsed = new URL(redirectTo);
+                if (parsed.protocol === 'https:') safeRedirect = redirectTo;
+            } catch { /* invalid URL */ }
+        }
+
+        const cookies = parse(req.headers.cookie || '');
+        const token   = cookies.session_token;
+        if (token) {
+            let decoded;
+            try {
+                decoded = jwt.verify(token, process.env.JWT_SECRET, {
+                    issuer: 'auth-service', audience: 'api'
+                });
+            } catch { decoded = null; }
+
+            if (decoded?.jti && decoded?.exp) {
+                const expiresAt = new Date(decoded.exp * 1000).toISOString();
+                await pool.query(
+                    'INSERT INTO revoked_tokens (jti, expires_at) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+                    [decoded.jti, expiresAt]
+                ).catch(err => console.error('[WARN] logout-redirect revoke error:', err.message));
+                auditLog('LOGOUT_REDIRECT', { username: decoded.username, ip });
+            }
+        }
+
+        res.setHeader('Set-Cookie', [
+            serialize('session_token', '', {
+                httpOnly: true, secure: process.env.NODE_ENV === 'production',
+                sameSite: 'strict', maxAge: 0, path: '/'
+            }),
+            serialize('csrf_token', '', {
+                httpOnly: false, secure: process.env.NODE_ENV === 'production',
+                sameSite: 'strict', maxAge: 0, path: '/'
+            })
+        ]);
+
+        const destination = safeRedirect || `https://${req.headers.host}/`;
+        res.setHeader('Location', destination);
+        return res.status(302).send();
+    }
+
     // ── GET: Cron Cleanup ────────────────────────────────────
     if (req.method === 'GET') {
         res.setHeader('Cache-Control', 'no-store');
