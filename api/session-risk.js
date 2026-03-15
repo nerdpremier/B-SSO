@@ -39,15 +39,14 @@ import {
 } from '../lib/response-utils.js';
 
 // ── Threshold ─────────────────────────────────────────────────
-// combined_score = pre×0.3 + post×0.7
+// combined_score = pre×0.3 + post×0.7  (normalized 0–1)
 //
-//  < WARN_THRESHOLD               → ok       (พฤติกรรมปกติ)
-//  WARN_THRESHOLD  – STEP_UP      → warn     (น่าสังเกต, แจ้ง user)
-//  STEP_UP         – REVOKE       → step_up  (ผิดปกติ, บังคับ re-auth)
-//  ≥ REVOKE_THRESHOLD             → revoke   (ผิดมนุษย์, ตัด session ทันที)
-const WARN_THRESHOLD    = 0.40;
-const STEP_UP_THRESHOLD = 0.60;
-const REVOKE_THRESHOLD  = 0.75;
+//  < MEDIUM_THRESHOLD             → ok       (ต่ำ — ใช้งานต่อ)
+//  MEDIUM_THRESHOLD – HIGH        → step_up  (ปานกลาง — ขอ MFA ใหม่)
+//  ≥ HIGH_THRESHOLD               → block    (สูง — block 15 นาที)
+const MEDIUM_THRESHOLD  = 0.40;
+const HIGH_THRESHOLD    = 0.65;
+const BLOCK_MINUTES     = 15;
 
 
 export default async function handler(req, res) {
@@ -205,6 +204,7 @@ export default async function handler(req, res) {
         const sessionRes = await pool.query(
             `SELECT
                 u.sessions_revoked_at,
+                u.blocked_until,
                 rt.jti                AS revoked_jti,
                 lr.risk_score_normalized AS pre_score
              FROM users u
@@ -225,6 +225,13 @@ export default async function handler(req, res) {
         if (revoked_jti) {
             auditLog('SESSION_RISK_REJECTED_REVOKED', { username: decoded.username, jti: decoded.jti, ip });
             return res.status(401).json({ error: 'Session revoked' });
+        }
+
+        // ตรวจว่า user ถูก block อยู่ไหม
+        if (sessionRes.rows[0].blocked_until && new Date(sessionRes.rows[0].blocked_until) > new Date()) {
+            const minutesLeft = Math.ceil((new Date(sessionRes.rows[0].blocked_until) - new Date()) / 60000);
+            auditLog('SESSION_RISK_BLOCKED_USER', { username: decoded.username, ip, minutesLeft });
+            return res.status(403).json({ error: 'blocked', minutesLeft });
         }
 
         if (sessions_revoked_at && typeof decoded.iat === 'number') {
@@ -274,26 +281,31 @@ export default async function handler(req, res) {
     else if (combinedScore >= WARN_THRESHOLD)     action = 'warn';
     else                                          action = 'ok';
 
-    // ── 7. Revoke session ถ้า action = revoke ─────────────────
-    if (action === 'revoke') {
+    // ── 7. Block user 15 นาที ถ้า action = block ─────────────────
+    if (action === 'block') {
         try {
+            const blockedUntil = new Date(Date.now() + BLOCK_MINUTES * 60 * 1000).toISOString();
+            // block user ใน DB
+            await pool.query(
+                'UPDATE users SET blocked_until = $1 WHERE username = $2',
+                [blockedUntil, decoded.username]
+            );
+            // revoke session ด้วย
             const expiresAt = new Date(decoded.exp * 1000).toISOString();
             await pool.query(
                 'INSERT INTO revoked_tokens (jti, expires_at) VALUES ($1, $2) ON CONFLICT DO NOTHING',
                 [decoded.jti, expiresAt]
             );
-            auditLog('SESSION_RISK_REVOKED', {
-                username: decoded.username,
-                jti:      decoded.jti,
+            auditLog('SESSION_RISK_BLOCKED', {
+                username:     decoded.username,
+                jti:          decoded.jti,
                 combinedScore,
-                preScore,
-                postScore,
+                blockedUntil,
                 ip,
             });
-        } catch (revokeErr) {
-            console.error('[ERROR] session-risk.js revoke:', revokeErr.message);
-            // ถ้า revoke fail → คืน step_up แทน (ไม่ปล่อยให้ผ่านเงียบ ๆ)
-            action = 'step_up';
+        } catch (blockErr) {
+            console.error('[ERROR] session-risk.js block:', blockErr.message);
+            action = 'step_up'; // fail → step_up แทน
         }
     }
 
