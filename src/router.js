@@ -6,12 +6,12 @@ import { renderDeveloper } from "./views/developer.js";
 import { toast } from "./ui/toast.js";
 
 const routes = [
-  { path: "/", view: () => renderLogin() },
-  { path: "/login", view: () => renderLogin() },
-  { path: "/register", view: () => renderRegister() },
-  { path: "/mfa", view: () => renderMfa() },
-  { path: "/welcome", view: () => renderWelcome(), guard: "auth" },
-  { path: "/developer", view: () => renderDeveloper(), guard: "auth" },
+  { path: "/", view: renderLogin },
+  { path: "/login", view: renderLogin },
+  { path: "/register", view: renderRegister },
+  { path: "/mfa", view: renderMfa },
+  { path: "/welcome", view: renderWelcome, guard: "auth" },
+  { path: "/developer", view: renderDeveloper, guard: "auth" },
 ];
 
 function match(pathname) {
