@@ -257,11 +257,17 @@ export default async function handler(req, res) {
     if (!isValidBody(req.body)) {
         return res.status(400).json({ error: 'Invalid request data' });
     }
-    const { behavior } = req.body;
+    const { behavior, tenant_id: rawTenantId } = req.body;
+    const tenantId = typeof rawTenantId === 'string' && rawTenantId.length <= 64 ? rawTenantId : null;
 
     // ── 4. คำนวณ post-login score จาก Risk Engine ─────────────
     // fetchBehaviorScore คืน null ถ้า engine down หรือ payload ไม่ valid
-    const rawPostScore = await fetchBehaviorScore(behavior ?? null);
+    const rawPostScore = await fetchBehaviorScore(behavior ?? null, {
+        tenant_id:  tenantId,
+        username:   decoded.username,
+        session_jti: decoded.jti,
+        mode:       isAggregator ? 'post_login_aggregator' : 'post_login_browser',
+    });
 
     // ถ้า engine unavailable → ใช้ pre_score เป็น post_score ด้วย
     // (conservative: ไม่ลด risk โดยไม่มีข้อมูล)

@@ -140,6 +140,13 @@ async function sendCheckpoint(ssoUrl, callbacks) {
 
     let res;
     try {
+        const body = {
+            behavior,
+        };
+        if (callbacks.tenantId && typeof callbacks.tenantId === 'string') {
+            body.tenant_id = callbacks.tenantId;
+        }
+
         res = await fetch(`${ssoUrl}/api/session-risk`, {
             method:      'POST',
             credentials: 'include',
@@ -147,7 +154,7 @@ async function sendCheckpoint(ssoUrl, callbacks) {
                 'Content-Type': 'application/json',
                 'X-CSRF-Token': csrfToken,
             },
-            body: JSON.stringify({ behavior }),
+            body: JSON.stringify(body),
         });
     } catch {
         return; // network error → skip
@@ -190,6 +197,7 @@ async function sendCheckpoint(ssoUrl, callbacks) {
  *
  * @param {object}   options
  * @param {string}   options.ssoUrl   - URL ของ CARS-SSO (ไม่มี trailing slash)
+ * @param {string}   [options.tenantId] - รหัส tenant/ลูกค้า (ใช้สำหรับ multi-tenant risk model)
  * @param {number}   [options.intervalMs=15000] - ส่งทุกกี่ ms (default 15 วินาที)
  * @param {function} [options.onWarn]    - callback เมื่อ action = warn
  * @param {function} [options.onStepUp]  - callback เมื่อ action = step_up
@@ -200,6 +208,7 @@ export function startRiskMonitor(options = {}) {
 
     const {
         ssoUrl,
+        tenantId,
         intervalMs = 15_000,
         onWarn,
         onStepUp,
@@ -208,14 +217,20 @@ export function startRiskMonitor(options = {}) {
 
     if (!ssoUrl) throw new Error('[RiskSDK] ssoUrl is required');
 
-    const callbacks = { onWarn, onStepUp, onRevoke };
+    const callbacks = { onWarn, onStepUp, onRevoke, tenantId };
 
     _behaviorState  = initCollector();
     _csrfCache      = null;
 
     // ส่งครั้งแรกหลัง 15 วินาที (ให้เวลาเก็บข้อมูลพอก่อน)
     _monitorInterval = setInterval(() => {
-        sendCheckpoint(ssoUrl, callbacks).catch(err =>
+        // inject tenantId ลงใน behavior payload ผ่าน callbacks wrapper
+        sendCheckpoint(ssoUrl, {
+            onWarn:  (score) => callbacks.onWarn?.(score),
+            onStepUp: (score) => callbacks.onStepUp?.(score),
+            onRevoke: (score) => callbacks.onRevoke?.(score),
+            tenantId,
+        }).catch(err =>
             console.error('[RiskSDK] sendCheckpoint error:', err)
         );
     }, intervalMs);
