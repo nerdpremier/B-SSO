@@ -17,7 +17,9 @@ export function toast({ tone = "ok", title, message, timeoutMs = 4500 } = {}) {
     <div class="toast toast--${tone}">
       <div class="toast__row">
         <p class="toast__title">${escapeHtml(safeTitle)}</p>
-        <button class="toast__close" type="button" aria-label="ปิด">×</button>
+        <button class="toast__close" type="button" aria-label="ปิดการแจ้งเตือน">
+          <svg class="icon" aria-hidden="true"><use href="/assets/icons.svg#i-x"></use></svg>
+        </button>
       </div>
       <p class="toast__msg">${escapeHtml(safeMsg)}</p>
     </div>

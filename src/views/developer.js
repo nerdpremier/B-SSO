@@ -61,7 +61,7 @@ export async function renderDeveloper({ outlet } = {}) {
               <div class="stack" style="gap: 10px;">
                 <span class="badge">
                   <svg class="icon" aria-hidden="true"><use href="/assets/icons.svg#i-link"></use></svg>
-                  <span>Developer Portal</span>
+                  <span>พอร์ทัลนักพัฒนา</span>
                 </span>
                 <h1 class="card__title">แดชบอร์ดการเชื่อมต่อ</h1>
                 <p class="card__subtitle">จัดการคีย์, integrations, และตรวจสอบบันทึกเหตุการณ์ความเสี่ยง</p>
@@ -72,22 +72,22 @@ export async function renderDeveloper({ outlet } = {}) {
               </a>
             </div>
 
-            <div class="tabs" role="tablist" aria-label="Developer sections">
+            <div class="tabs" role="tablist" aria-label="ส่วนต่าง ๆ ของพอร์ทัลนักพัฒนา">
               <button class="tab" type="button" role="tab" aria-selected="true"  data-tab="keys">
                 <svg class="icon" aria-hidden="true"><use href="/assets/icons.svg#i-key"></use></svg>
-                <span>API Keys</span>
+                <span>คีย์ API</span>
               </button>
               <button class="tab" type="button" role="tab" aria-selected="false" data-tab="integrations">
                 <svg class="icon" aria-hidden="true"><use href="/assets/icons.svg#i-sliders"></use></svg>
-                <span>Integrations</span>
+                <span>การเชื่อมต่อ</span>
               </button>
               <button class="tab" type="button" role="tab" aria-selected="false" data-tab="logs">
                 <svg class="icon" aria-hidden="true"><use href="/assets/icons.svg#i-list"></use></svg>
-                <span>Logs</span>
+                <span>บันทึกเหตุการณ์</span>
               </button>
               <button class="tab" type="button" role="tab" aria-selected="false" data-tab="ai">
                 <svg class="icon" aria-hidden="true"><use href="/assets/icons.svg#i-shield"></use></svg>
-                <span>AI Decisions</span>
+                <span>การตัดสินใจ AI</span>
               </button>
             </div>
 

@@ -128,5 +128,10 @@
     <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
       d="M4.5 6h.01M4.5 12h.01M4.5 18h.01"/>
   </symbol>
+
+  <symbol id="i-x" viewBox="0 0 24 24">
+    <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
+      d="M7 7l10 10M17 7 7 17"/>
+  </symbol>
 </svg>
 

@@ -2,7 +2,8 @@
   color-scheme: light dark;
 
   /* Typography */
-  --font-sans: "IBM Plex Sans", system-ui, -apple-system, Segoe UI, Arial, sans-serif;
+  /* Thai-friendly fallbacks (no new external font downloads) */
+  --font-sans: "IBM Plex Sans", "Noto Sans Thai", "Sarabun", "Prompt", system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
   --font-serif: "Fraunces", ui-serif, Georgia, serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
