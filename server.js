@@ -10,18 +10,25 @@ const PORT = Number.parseInt(process.env.PORT || '3000', 10);
 const HOST = process.env.HOST || '127.0.0.1';
 
 const STATIC_REWRITES = new Map([
-  // SPA entrypoints
-  ['/', 'index.html'],
-  ['/login', 'index.html'],
-  ['/register', 'index.html'],
-  ['/mfa', 'index.html'],
-  ['/welcome', 'index.html'],
-  ['/developer', 'index.html'],
+  // /ref-based frontend
+  ['/', 'ref/login.html'],
+  ['/login', 'ref/login.html'],
+  ['/register', 'ref/register.html'],
+  ['/mfa', 'ref/mfa-verify.html'],
+  ['/welcome', 'ref/welcome.html'],
+  ['/developer', 'ref/developer-portal.html'],
+  ['/forgot-password', 'ref/forgot-password.html'],
+  ['/reset-password', 'ref/reset-password.html'],
+  ['/oauth/authorize', 'ref/authorize.html'],
 
-  // Keep legacy pages available (optional)
-  ['/forgot-password', 'forgot-password.html'],
-  ['/reset-password', 'reset-password.html'],
-  ['/oauth/authorize', 'authorize.html'],
+  // /ref assets exposed at root paths (as referenced by /ref HTML)
+  ['/style.css', 'ref/style.css'],
+  ['/effects.js', 'ref/effects.js'],
+  ['/script.js', 'ref/script.js'],
+  ['/authorize.js', 'ref/authorize.js'],
+  ['/logout.js', 'ref/logout.js'],
+  ['/developer-portal.css', 'ref/developer-portal.css'],
+  ['/developer-portal.js', 'ref/developer-portal.js'],
 ]);
 
 const API_REWRITES = new Map([

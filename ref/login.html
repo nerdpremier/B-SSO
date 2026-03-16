@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; form-action 'self'; base-uri 'none';">
+  <title>Sign In — CARS SSO</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="auth-layout">
+    <div class="auth-card">
+
+      <div class="brand-row" data-stagger>
+        <div class="brand-logo" aria-hidden="true">🚗</div>
+        <span class="brand-name">CARS SSO</span>
+      </div>
+
+      <span class="page-icon" aria-hidden="true" data-stagger>👤</span>
+      <h1 class="page-title" data-stagger>Welcome <em>back</em></h1>
+      <p class="page-subtitle" data-stagger>Sign in to your CARS account</p>
+
+      <div id="status-box" class="status-box" role="status" aria-live="polite" aria-atomic="true" data-stagger></div>
+
+      <form id="login-form" novalidate data-stagger>
+        <div class="field">
+          <label for="username">Username</label>
+          <input type="text" id="username" name="username"
+            placeholder="Enter your username"
+            autocomplete="username" maxlength="32"
+            required aria-required="true" aria-describedby="status-box">
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password"
+            placeholder="Enter your password"
+            autocomplete="current-password" maxlength="128"
+            required aria-required="true" aria-describedby="status-box">
+        </div>
+        <div class="checkbox-group">
+          <input type="checkbox" id="remember-device" name="remember-device">
+          <label for="remember-device">Remember this device for 30 days</label>
+        </div>
+        <button type="submit" id="login-btn" class="btn-primary">Sign In</button>
+      </form>
+
+      <div class="footer-link-row" data-stagger>
+        <a href="/forgot-password">Forgot password?</a>
+        <a href="/register">Create account →</a>
+      </div>
+
+    </div>
+  </div>
+  <script src="/effects.js"></script>
+  <script src="/script.js"></script>
+</body>
+</html>
