@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; form-action 'self'; base-uri 'none';">
+  <title>Signing out — CARS SSO</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="auth-layout">
+    <div class="auth-card">
+      <div class="brand-row" data-stagger>
+        <div class="brand-logo" aria-hidden="true">🚗</div>
+        <span class="brand-name">CARS SSO</span>
+      </div>
+
+      <span class="page-icon" aria-hidden="true" data-stagger>🚪</span>
+      <h1 class="page-title" data-stagger>Signing out…</h1>
+      <p class="page-subtitle" data-stagger>Please wait a moment.</p>
+
+      <div id="status-box" class="status-box loading" role="alert" aria-live="assertive" aria-atomic="true" data-stagger>
+        Logging you out securely…
+      </div>
+    </div>
+  </div>
+
+  <script src="/effects.js"></script>
+  <script src="/front-logout.js"></script>
+</body>
+</html>
+

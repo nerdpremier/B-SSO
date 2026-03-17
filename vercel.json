@@ -30,7 +30,8 @@
     { "source": "/forgot-password", "destination": "/forgot-password.html" },
     { "source": "/reset-password",  "destination": "/reset-password.html" },
     { "source": "/oauth/authorize", "destination": "/authorize.html" },
-    { "source": "/developer",       "destination": "/developer-portal.html" }
+    { "source": "/developer",       "destination": "/developer-portal.html" },
+    { "source": "/front-logout",    "destination": "/front-logout.html" }
   ],
 
   "headers": [
@@ -57,6 +58,13 @@
     },
     {
       "source": "/(|login|register|mfa|welcome|forgot-password|reset-password)",
+      "headers": [
+        { "key": "Content-Security-Policy", "value": "upgrade-insecure-requests; default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'; form-action 'self'" },
+        { "key": "Cache-Control",           "value": "no-store" }
+      ]
+    },
+    {
+      "source": "/front-logout",
       "headers": [
         { "key": "Content-Security-Policy", "value": "upgrade-insecure-requests; default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'; form-action 'self'" },
         { "key": "Cache-Control",           "value": "no-store" }
