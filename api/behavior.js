@@ -48,6 +48,10 @@ const ENGINE_URL        = process.env.RISK_ENGINE_URL;
 const ENGINE_API_KEY    = process.env.RISK_ENGINE_API_KEY;
 const RISK_SHARED_SECRET = process.env.RISK_ENGINE_SHARED_SECRET;
 
+function hashToken(token) {
+    return crypto.createHash('sha256').update(token).digest('hex');
+}
+
 function signForRiskEngine(timestamp, nonce, body) {
     if (!RISK_SHARED_SECRET) return null;
     const bodyHash = crypto.createHash('sha256').update(body).digest('hex');
@@ -85,25 +89,71 @@ export default async function handler(req, res) {
         console.error('[WARN] rate-limit DB error (behavior), failing open:', rlErr.message);
     }
 
-    // ── ตรวจสอบ session จาก JWT ใน cookie ────────────────────
     const cookies = parse(req.headers.cookie || '');
-    const token   = cookies.session_token;
+    const sessionCookieToken = cookies.session_token;
+    const authHeader = req.headers.authorization;
 
-    if (!token) {
-        return res.status(401).json({ action: 'revoke' });
-    }
+    let username = null;
+    let sessionJti = null;
+    let authType = null; // 'session_cookie' | 'oauth_bearer'
 
-    let decoded;
-    try {
-        decoded = jwt.verify(token, process.env.JWT_SECRET, {
-            issuer:   'auth-service',
-            audience: 'api'
-        });
-    } catch {
-        return res.status(401).json({ action: 'revoke' });
-    }
+    // ── Auth path A: same-origin SSO session cookie (legacy) ──
+    if (sessionCookieToken) {
+        let decoded;
+        try {
+            decoded = jwt.verify(sessionCookieToken, process.env.JWT_SECRET, {
+                issuer:   'auth-service',
+                audience: 'api'
+            });
+        } catch {
+            return res.status(401).json({ action: 'revoke' });
+        }
+        if (!decoded || typeof decoded.username !== 'string' || !decoded.jti) {
+            return res.status(401).json({ action: 'revoke' });
+        }
+        username = decoded.username;
+        sessionJti = decoded.jti;
+        authType = 'session_cookie';
+    } else if (authHeader?.startsWith?.('Bearer ')) {
+        // ── Auth path B: OAuth access_token (opaque) from client app ──
+        const token = authHeader.slice(7).trim();
+        if (!token || token.length > 128) {
+            res.setHeader('WWW-Authenticate', 'Bearer realm="oauth", error="invalid_token"');
+            return res.status(401).json({ action: 'revoke' });
+        }
 
-    if (!decoded || typeof decoded.username !== 'string' || !decoded.jti) {
+        try {
+            const result = await pool.query(
+                `SELECT ot.id, ot.username, ot.expires_at, ot.revoked_at
+                 FROM oauth_tokens ot
+                 WHERE ot.token_hash = $1 AND ot.token_type = 'access'`,
+                [hashToken(token)]
+            );
+
+            if (result.rows.length === 0) {
+                res.setHeader('WWW-Authenticate', 'Bearer realm="oauth", error="invalid_token"');
+                return res.status(401).json({ action: 'revoke' });
+            }
+
+            const row = result.rows[0];
+            if (row.revoked_at) {
+                res.setHeader('WWW-Authenticate', 'Bearer realm="oauth", error="invalid_token"');
+                return res.status(401).json({ action: 'revoke' });
+            }
+            if (new Date() > new Date(row.expires_at)) {
+                res.setHeader('WWW-Authenticate',
+                    'Bearer realm="oauth", error="invalid_token", error_description="token expired"');
+                return res.status(401).json({ action: 'revoke' });
+            }
+
+            username = row.username;
+            sessionJti = `oauth:${row.id}`;
+            authType = 'oauth_bearer';
+        } catch (dbErr) {
+            console.error('[ERROR] behavior.js oauth token lookup failed:', dbErr.message);
+            return res.status(500).json({ error: 'Internal server error' });
+        }
+    } else {
         return res.status(401).json({ action: 'revoke' });
     }
 
@@ -168,8 +218,8 @@ export default async function handler(req, res) {
             idle_ratio: idleRatio,
         },
         // metadata เพิ่มเติม (FastAPI จะเพิกเฉย field ที่ไม่ได้อยู่ใน model)
-        username:    decoded.username,
-        session_jti: decoded.jti,
+        username,
+        session_jti: sessionJti,
         ip,
         page: typeof page === 'string' ? page : undefined,
         ts:   new Date().toISOString(),
@@ -206,7 +256,7 @@ export default async function handler(req, res) {
 
         if (!engineRes.ok) {
             console.error('[WARN] behavior.js: engine responded with', engineRes.status);
-            auditLog('BEHAVIOR_ENGINE_ERROR', { status: engineRes.status, username: decoded.username, ip });
+            auditLog('BEHAVIOR_ENGINE_ERROR', { status: engineRes.status, username, ip });
             // fail‑open
             return res.status(200).json({ action: 'low' });
         }
@@ -229,21 +279,30 @@ export default async function handler(req, res) {
         }
 
         auditLog('BEHAVIOR_ENGINE_DECISION', {
-            username: decoded.username,
+            username,
             ip,
             action,
         });
 
-        // ถ้า risk engine ตัดสินใจ REVOKE → บันทึกลง revoked_tokens เพื่อให้ session.js ปฏิเสธใน backend
-        if (action === 'revoke' && decoded.jti && decoded.exp) {
+        // ถ้า risk engine ตัดสินใจ REVOKE → บันทึกลง revoked_tokens เฉพาะกรณีที่เป็น session cookie (มี JWT jti/exp)
+        if (action === 'revoke' && authType === 'session_cookie') {
+            // NOTE: sessionCookieToken ถูก verify แล้วด้านบน จึงต้องมี decoded-like fields แต่เราไม่เก็บ decoded ไว้เพื่อหลีกเลี่ยง log/accidental leak
+            // ใช้ sessionJti (decoded.jti) และ expire จาก JWT โดย decode แบบไม่ verify ซ้ำ: token มาจาก cookie เดิมที่ verify ผ่านแล้ว
+            let exp = null;
             try {
-                const expiresAt = new Date(decoded.exp * 1000).toISOString();
-                await pool.query(
-                    'INSERT INTO revoked_tokens (jti, expires_at) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-                    [decoded.jti, expiresAt]
-                );
-            } catch (dbErr) {
-                console.error('[WARN] behavior.js revoke insert failed:', dbErr.message);
+                const decodedUnsafe = jwt.decode(sessionCookieToken);
+                exp = decodedUnsafe && typeof decodedUnsafe.exp === 'number' ? decodedUnsafe.exp : null;
+            } catch { /* ignore */ }
+            if (sessionJti && exp) {
+                try {
+                    const expiresAt = new Date(exp * 1000).toISOString();
+                    await pool.query(
+                        'INSERT INTO revoked_tokens (jti, expires_at) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+                        [sessionJti, expiresAt]
+                    );
+                } catch (dbErr) {
+                    console.error('[WARN] behavior.js revoke insert failed:', dbErr.message);
+                }
             }
         }
 
