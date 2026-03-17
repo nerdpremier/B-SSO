@@ -31,6 +31,7 @@ import { ensureStepupChallengesSchema } from '../lib/risk-score.js';
 const OTP_REGEX = /^\d{6}$/;
 const STEPUP_TTL_MINUTES = 5;
 const STEPUP_MAX_ATTEMPTS = 5;
+const STEPUP_MAX_SENDS_PER_SESSION = 3;
 
 function hashToken(token) {
     return crypto.createHash('sha256').update(token).digest('hex');
@@ -50,17 +51,18 @@ async function requireBearerUser(req) {
     const token = authHeader.slice(7).trim();
     if (!token || token.length > 128) return null;
 
+    const tokenHash = hashToken(token);
     const result = await pool.query(
-        `SELECT ot.username, ot.expires_at, ot.revoked_at
+        `SELECT ot.id, ot.username, ot.expires_at, ot.revoked_at
          FROM oauth_tokens ot
          WHERE ot.token_hash = $1 AND ot.token_type = 'access'`,
-        [hashToken(token)]
+        [tokenHash]
     );
     const row = result.rows[0];
     if (!row) return null;
     if (row.revoked_at) return null;
     if (new Date() > new Date(row.expires_at)) return null;
-    return row.username;
+    return { username: row.username, tokenHash, sessionJti: `oauth:${row.id}` };
 }
 
 export default async function handler(req, res) {
@@ -84,23 +86,47 @@ export default async function handler(req, res) {
         console.error('[WARN] stepup.js rate-limit DB error, failing open:', rlErr.message);
     }
 
-    let username;
+    let bearer;
     try {
-        username = await requireBearerUser(req);
+        bearer = await requireBearerUser(req);
     } catch (err) {
         console.error('[WARN] stepup.js bearer lookup failed:', err.message);
-        username = null;
+        bearer = null;
     }
-    if (!username) {
+    if (!bearer?.username) {
         res.setHeader('WWW-Authenticate', 'Bearer realm="oauth", error="invalid_token"');
         return res.status(401).json({ error: 'Unauthorized' });
     }
+    const { username, tokenHash, sessionJti } = bearer;
 
     await ensureStepupChallengesSchema();
 
     const action = req.body.action;
     if (action === 'send') {
         try {
+            // Limit: ขอ step-up เกิน 3 ครั้งต่อ session → revoke token ทันที
+            try {
+                const countRes = await pool.query(
+                    `SELECT COUNT(*)::int AS cnt
+                     FROM stepup_challenges
+                     WHERE username = $1 AND session_jti = $2
+                       AND created_at > NOW() - INTERVAL '8 hours'`,
+                    [username, sessionJti]
+                );
+                const cnt = Number(countRes.rows[0]?.cnt || 0);
+                if (cnt >= STEPUP_MAX_SENDS_PER_SESSION) {
+                    await pool.query(
+                        `UPDATE oauth_tokens SET revoked_at = NOW()
+                         WHERE token_hash = $1 AND token_type = 'access' AND revoked_at IS NULL`,
+                        [tokenHash]
+                    );
+                    auditLog('STEPUP_REVOKE_SEND_LIMIT', { username, ip, sessionJti, cnt });
+                    return res.status(403).json({ action: 'revoke', error: 'stepup_send_limit' });
+                }
+            } catch (limitErr) {
+                console.error('[WARN] stepup.js send limit check failed:', limitErr.message);
+            }
+
             const u = await pool.query('SELECT email FROM users WHERE username = $1', [username]);
             const email = u.rows[0]?.email;
             if (!email) return res.status(500).json({ error: 'User email not found' });
@@ -110,9 +136,9 @@ export default async function handler(req, res) {
             const codeHash = hashStepupCode(stepupId, code);
 
             await pool.query(
-                `INSERT INTO stepup_challenges (id, username, code_hash, expires_at)
-                 VALUES ($1, $2, $3, NOW() + INTERVAL '5 minutes')`,
-                [stepupId, username, codeHash]
+                `INSERT INTO stepup_challenges (id, username, session_jti, code_hash, expires_at)
+                 VALUES ($1, $2, $3, $4, NOW() + INTERVAL '5 minutes')`,
+                [stepupId, username, sessionJti, codeHash]
             );
 
             try {
