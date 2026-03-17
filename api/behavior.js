@@ -32,6 +32,7 @@ import crypto              from 'crypto';
 import { parse }           from 'cookie';
 import { getClientIp }     from '../lib/ip-utils.js';
 import { checkRateLimit }  from '../lib/rate-limit.js';
+import { LOGID_TTL_MINUTES } from '../lib/constants.js';
 import {
     setSecurityHeaders,
     auditLog,
@@ -277,11 +278,29 @@ export default async function handler(req, res) {
         let combinedScore = null;
         let combinedAction = 'low';
 
-        // พยายามดึง pre-login score ถ้ามี (เฉพาะ flow ที่ผูก session_jti กับ login_risks)
-        // หมายเหตุ: web customer ที่ auth ด้วย OAuth Bearer อาจไม่มี login_risks/session_jti แบบ JWT
+        const preLoginLogId = req.body?.pre_login_log_id;
+
+        // พยายามดึง pre-login score ถ้ามี
         let loginRiskId = null;
-        if (sessionJti) {
-            try {
+        try {
+            // (1B) ถ้ามี pre_login_log_id จากเว็บลูกค้า → ใช้อันนี้ก่อน
+            const parsed = Number(preLoginLogId);
+            if (Number.isInteger(parsed) && parsed > 0) {
+                const byId = await pool.query(
+                    `SELECT id, pre_login_score
+                     FROM login_risks
+                     WHERE id = $1 AND username = $2
+                       AND created_at > NOW() - make_interval(mins => $3)
+                     ORDER BY created_at DESC
+                     LIMIT 1`,
+                    [parsed, username, LOGID_TTL_MINUTES]
+                );
+                if (byId.rows[0]) {
+                    loginRiskId = byId.rows[0].id;
+                    preLoginScore = Number(byId.rows[0].pre_login_score || 0);
+                }
+            } else if (sessionJti) {
+                // fallback (เดิม): lookup ด้วย session_jti
                 const preRes = await pool.query(
                     `SELECT id, pre_login_score
                      FROM login_risks
@@ -294,9 +313,9 @@ export default async function handler(req, res) {
                     loginRiskId = preRes.rows[0].id;
                     preLoginScore = Number(preRes.rows[0].pre_login_score || 0);
                 }
-            } catch (preErr) {
-                console.error('[WARN] behavior.js pre-login lookup failed:', preErr.message);
             }
+        } catch (preErr) {
+            console.error('[WARN] behavior.js pre-login lookup failed:', preErr.message);
         }
 
         // รวมคะแนนได้ก็ต่อเมื่อมี behaviorScore (จาก engine /score) และมี pre-login score
