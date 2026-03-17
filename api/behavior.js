@@ -75,6 +75,7 @@ export default async function handler(req, res) {
     }
 
     const ip = getClientIp(req);
+    const requestId = crypto.randomUUID();
 
     try {
         if (await checkRateLimit(`ip:${ip}:behavior`, 60, 60_000)) {
@@ -313,9 +314,9 @@ export default async function handler(req, res) {
         try {
             await pool.query(
                 `INSERT INTO behavior_risks
-                 (username, session_jti, behavior_score, engine_action, combined_score, combined_action)
-                 VALUES ($1, $2, $3, $4, $5, $6)`,
-                [username, sessionJti || '', behaviorScore, null, combinedScore, combinedAction]
+                 (request_id, username, session_jti, behavior_score, engine_action, combined_score, combined_action)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                [requestId, username, sessionJti || '', behaviorScore, null, combinedScore, combinedAction]
             );
         } catch (insErr) {
             console.error('[WARN] behavior.js behavior_risks insert failed:', insErr.message);
@@ -339,6 +340,7 @@ export default async function handler(req, res) {
         }
 
         auditLog('BEHAVIOR_ENGINE_DECISION', {
+            requestId,
             username,
             ip,
             action: combinedAction,
@@ -366,11 +368,11 @@ export default async function handler(req, res) {
             }
         }
 
-        return res.status(200).json({ action: combinedAction });
+        return res.status(200).json({ action: combinedAction, request_id: requestId });
     } catch (err) {
         console.error('[ERROR] behavior.js engine call failed:', err.message);
         // fail‑open: ไม่ทำให้ user หลุดออกเพราะ engine down
-        return res.status(200).json({ action: 'low' });
+        return res.status(200).json({ action: 'low', request_id: requestId });
     }
 }
 
