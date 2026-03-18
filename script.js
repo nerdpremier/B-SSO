@@ -1,19 +1,12 @@
-// ==========================================
-// CARS SSO — Core Frontend Logic
-// CSP-safe: no element.style assignments.
-// Show/hide via element.hidden (sets [hidden] attr, not inline style).
+// ============================================================
+// ไฟล์หลักสำหรับจัดการหน้าตาและการทำงานของระบบ SSO ฝั่งผู้ใช้
+// ทำหน้าที่ควบคุมการลงทะเบียน ล็อกอิน การยืนยันตัวตน และการจัดการ session
 //
-// [FIX-REDIRECT] แยก ?next= (same-origin, สำหรับ OAuth consent page)
-//   ออกจาก ?redirect_back= (third-party SSO token redirect)
-//
-//   เดิม: script ส่งทั้งสองเป็น redirect_back ไปยัง auth API
-//         validateRedirectBack() ตรวจกับ oauth_clients.redirect_uris
-//         /oauth/authorize?... ไม่เคยอยู่ใน registered URIs
-//         → redirectUrl = null → user ไป /welcome แทนกลับ consent page
-//
-//   แก้:  ?next= → หลัง login สำเร็จ redirect ฝั่ง frontend โดยตรง
-//         ?redirect_back= → ส่งไป auth API เพื่อสร้าง SSO token เท่านั้น
-// ==========================================
+// จุดเด่น:
+//   - ปลอดภัยต่อ CSP: ไม่ใช้ inline style ใช้ element.hidden แทน
+//   - แยกการ redirect ระหว่างหน้าเดียวกัน (OAuth) กับข้ามโดเมน (SSO)
+//   - มีระบบป้องกันการโจมตีและการตรวจสอบความปลอดภัยหลายชั้น
+// ============================================================
 
 let _submitting = false;
 let resendCooldown = 0;
@@ -33,7 +26,7 @@ async function withGuard(fn, event) {
     finally { _submitting = false; if (btn) btn.classList.remove('btn--loading'); }
 }
 
-// ── CSRF ─────────────────────────────────────────────────────
+// ป้องกันการส่งคำขับซ้ำจากผู้ใช้ และแสดงสถานะการโหลด
 let _csrfToken = null;
 async function getCsrfToken() {
     if (_csrfToken) return _csrfToken;
@@ -69,7 +62,7 @@ async function secureFetch(url, options = {}, timeoutMs = 15000) {
     } finally { clearTimeout(timeoutId); }
 }
 
-// ── UI Helpers ───────────────────────────────────────────────
+// ฟังก์ชันช่วยสำหรับแสดงข้อความแจ้งเตือนต่างๆ ให้ผู้ใช้เห็น
 function updateStatus(type, msg) {
     const box = document.getElementById('status-box');
     if (!box) return;
@@ -82,7 +75,7 @@ function updateStatus(type, msg) {
     box.textContent = msg;
 }
 
-// ── Device Fingerprint ───────────────────────────────────────
+// สร้างลายนิ้วมือของอุปกรณ์เพื่อใช้ในการตรวจสอบความปลอดภัย
 function getSecureFp() {
     try {
         let id = localStorage.getItem('_device_fp');
@@ -96,27 +89,27 @@ function getSecureFp() {
     }
 }
 
-// ── Validation ───────────────────────────────────────────────
+// ฟังก์ชันตรวจสอบความถูกต้องของข้อมูลที่ผู้ใช้กรอก
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-function validateEmail(e)    { return (!e || !EMAIL_REGEX.test(e)) ? 'Please enter a valid email address.' : null; }
+function validateEmail(e)    { return (!e || !EMAIL_REGEX.test(e)) ? 'กรุณากรอกอีเมลที่ถูกต้อง' : null; }
 function validatePassword(p) {
     const r = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
-    return (p && !r.test(p)) ? 'Password must be 8+ characters with uppercase, lowercase, a number, and a symbol.' : null;
+    return (p && !r.test(p)) ? 'รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร พร้อมตัวพิมพ์ใหญ่ พิมพ์เล็ก ตัวเลข และสัญลักษณ์' : null;
 }
 function validateInputs(u, p) {
-    if (u && u.length > 32)  return 'Username must be 32 characters or fewer.';
-    if (p && p.length > 128) return 'Password must be 128 characters or fewer.';
-    if (u && !/^[a-zA-Z0-9]+$/.test(u)) return 'Username may only contain letters and numbers.';
+    if (u && u.length > 32)  return 'ชื่อผู้ใช้ต้องมีไม่เกิน 32 ตัวอักษร';
+    if (p && p.length > 128) return 'รหัสผ่านต้องมีไม่เกิน 128 ตัวอักษร';
+    if (u && !/^[a-zA-Z0-9]+$/.test(u)) return 'ชื่อผู้ใช้สามารถใช้ได้เฉพาะตัวอักษรภาษาอังกฤษและตัวเลขเท่านั้น';
     return validatePassword(p);
 }
 
-// ── Password Strength ────────────────────────────────────────
+// ตรวจสอบความแข็งแรงของรหัสผ่านตามเงื่อนไขที่กำหนด
 const PASSWORD_RULES = [
-    { id:'rule-length',  test: p=>p.length>=8,        label:'At least 8 characters' },
-    { id:'rule-upper',   test: p=>/[A-Z]/.test(p),    label:'Uppercase letter (A–Z)' },
-    { id:'rule-lower',   test: p=>/[a-z]/.test(p),    label:'Lowercase letter (a–z)' },
-    { id:'rule-number',  test: p=>/\d/.test(p),        label:'Number (0–9)' },
-    { id:'rule-special', test: p=>/[@$!%*?&]/.test(p), label:'Symbol (@$!%*?&)' },
+    { id:'rule-length',  test: p=>p.length>=8,        label:'อย่างน้อย 8 ตัวอักษร' },
+    { id:'rule-upper',   test: p=>/[A-Z]/.test(p),    label:'ตัวอักษรพิมพ์ใหญ่ (A–Z)' },
+    { id:'rule-lower',   test: p=>/[a-z]/.test(p),    label:'ตัวอักษรพิมพ์เล็ก (a–z)' },
+    { id:'rule-number',  test: p=>/\d/.test(p),        label:'ตัวเลข (0–9)' },
+    { id:'rule-special', test: p=>/[@$!%*?&]/.test(p), label:'สัญลักษณ์ (@$!%*?&)' },
 ];
 function checkPasswordStrength(password) {
     PASSWORD_RULES.forEach(({ id, test, label }) => {
@@ -131,7 +124,7 @@ function checkPasswordStrength(password) {
     });
 }
 
-// ── Register ─────────────────────────────────────────────────
+// จัดการการลงทะเบียนบัญชีผู้ใช้ใหม่
 async function handleRegister() {
     const username = document.getElementById('username')?.value.trim();
     const email    = document.getElementById('email')?.value.trim();
@@ -163,7 +156,7 @@ async function handleRegister() {
     }
 }
 
-// ── Login ─────────────────────────────────────────────────────
+// จัดการกระบวนการล็อกอินเข้าสู่ระบบ
 async function preLoginCheck() {
     const username = document.getElementById('username')?.value.trim();
     const password = document.getElementById('password')?.value;
@@ -229,7 +222,7 @@ async function preLoginCheck() {
     }
 }
 
-// ── MFA ───────────────────────────────────────────────────────
+// จัดการการยืนยันตัวตนแบบ 2 ขั้นตอน (MFA)
 async function verifyMFA() {
     const code        = document.getElementById('mfa-code')?.value.trim();
     const logId       = sessionStorage.getItem('mfa_logId');
@@ -294,7 +287,7 @@ function startAccountLockdown(seconds) {
     },1000);
 }
 
-// ── Forgot / Reset Password ───────────────────────────────────
+// จัดการการขอรีเซ็ตรหัสผ่านเมื่อผู้ใช้ลืม
 async function requestPasswordReset() {
     const email=document.getElementById('reset-email')?.value.trim();
     if (!email) return updateStatus('danger','Please enter your email address.');
@@ -324,7 +317,7 @@ async function executePasswordReset() {
     } catch (err) { updateStatus('danger', err.name==='AbortError'?'Request timed out.':'Something went wrong.'); }
 }
 
-// ── Session Check ─────────────────────────────────────────────
+// ตรวจสอบสถานะการล็อกอินของผู้ใช้ในปัจจุบัน
 async function checkAuth() {
     try {
         const controller=new AbortController(), timeoutId=setTimeout(()=>controller.abort(),15000);
@@ -344,7 +337,7 @@ async function logout() {
     window.location.replace('/login');
 }
 
-// ── DOMContentLoaded ──────────────────────────────────────────
+// ตั้งค่า event listeners เมื่อโหลดหน้าเว็บเสร็จ
 document.addEventListener('DOMContentLoaded', () => {
     if (document.getElementById('user-display')) checkAuth();
     document.getElementById('logout-btn')     ?.addEventListener('click', e=>withGuard(logout,e));

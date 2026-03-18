@@ -461,7 +461,7 @@ body.page-exit .portal-wrap { animation: pageOut .28s cubic-bezier(.4,0,1,1) for
 .authorize-error-icon { font-size: 34px; margin-bottom: 14px; }
 .authorize-error-note { font-size: 13.5px; color: var(--muted); }
 
-/* MFA */
+/* MFA การยืนยันตัวตน */
 .mfa-footer-note { font-size: 13.5px; color: var(--muted); margin-bottom: 8px; }
 .mfa-cancel-link { font-size: 13px; color: var(--dim); text-decoration: none; transition: color .15s; }
 .mfa-cancel-link:hover { color: var(--err); }

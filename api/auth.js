@@ -1,20 +1,15 @@
 // ============================================================
-// api/auth.js — Register, Login & Email Verification
-// ทำหน้าที่ 3 อย่าง:
-//   GET  ?action=verify-email&token=xxx — ยืนยัน email หลัง register
-//   POST action=register — สร้างบัญชีใหม่ + ส่ง verification email
-//   POST action=login    — ตรวจ credentials → ดู risk level
-//                           LOW    → ออก JWT ทันที
-//                           MEDIUM → ส่ง MFA email → รอ verify-mfa.js
-//                           HIGH   → reject ทันที
+// จัดการการลงทะเบียน ล็อกอิน และการยืนยันอีเมล
+// ทำหน้าที่หลัก 3 อย่าง:
+//   1. ยืนยันอีเมลหลังการลงทะเบียน
+//   2. สร้างบัญชีผู้ใช้ใหม่และส่งอีเมลยืนยัน
+//   3. ตรวจสอบข้อมูลล็อกอินและประเมินความเสี่ยง
 //
-// Security guarantees:
-//   - DUMMY_HASH ป้องกัน timing attack เมื่อ username ไม่มีในระบบ
-//   - FOR UPDATE บน login_risks ป้องกัน concurrent login race condition
-//   - JWT sign ก่อน COMMIT: ถ้า sign fail → ROLLBACK → user retry ได้
-//   - email normalized lowercase ตั้งแต่ register → forgot-password ทำงานถูกต้อง
-//   - Email verification token = SHA-256(randomBytes(32)) stored in DB
-//   - verify-email รวมใน auth.js เพื่อไม่เกิน Vercel 12-function limit
+// การป้องกันความปลอดภัย:
+//   - ป้องกัน timing attack เมื่อไม่พบผู้ใช้ในระบบ
+//   - ป้องกันการแข่งขันล็อกอินพร้อมกัน
+//   - ยืนยัน JWT ก่อนบันทึกข้อมูลเพื่อความสมบูรณ์
+//   - จัดเก็บอีเมลเป็นพิมพ์เล็กเสมอ
 // ============================================================
 import '../startup-check.js';
 import { pool }                from '../lib/db.js';
@@ -37,21 +32,21 @@ import jwt         from 'jsonwebtoken';
 import { serialize } from 'cookie';
 import crypto      from 'crypto';
 
-// DUMMY_HASH: ป้องกัน timing attack เมื่อ username ไม่มีในระบบ
+// ใช้สำหรับป้องกัน timing attack เมื่อไม่พบผู้ใช้ในระบบ
 // cost 12 ต้องตรงกับ production hash — ถ้าต่างกัน timing ต่างกัน = timing leak
 const DUMMY_HASH = bcrypt.hashSync('dummy_timing_prevention_fixed_v2', 12);
 
 export default async function handler(req, res) {
     setSecurityHeaders(res);
 
-    // ── GET: ตรวจสอบ email verified status (polling จาก PC) ──
+    // ตรวจสอบสถานะการยืนยันอีเมล (สำหรับ polling จาก PC)
     if (req.method === 'GET') {
         const { action, username } = req.query;
 
         res.setHeader('Cache-Control', 'no-store');
         const ip = getClientIp(req);
 
-        // ── verify-email: ยืนยัน email (?action=verify-email&token=xxx) ──
+        // ยืนยันอีเมลผ่านลิงก์ที่ส่งให้ผู้ใช้
         if (action === 'verify-email') {
             const { token } = req.query;
 
@@ -118,7 +113,7 @@ export default async function handler(req, res) {
             }
         }
 
-        // ── poll-verified: PC polling ว่า user verify email แล้วหรือยัง ──
+        // ตรวจสอบว่าผู้ใช้ยืนยันอีเมลแล้วหรือยัง (สำหรับ polling) ──
         // ใช้ username เป็น key แทน token เพราะ token ถูก delete หลัง verify แล้ว
         // endpoint นี้คืนแค่ boolean — ไม่เปิดเผยข้อมูลอื่น
         if (action === 'poll-verified') {
@@ -182,9 +177,7 @@ export default async function handler(req, res) {
     }
 
     try {
-        // ═══════════════════════════════════════════════════════
-        // REGISTER
-        // ═══════════════════════════════════════════════════════
+        // ดำเนินการลงทะเบียนบัญชีผู้ใช้ใหม่
         if (action === 'register') {
             if (typeof username !== 'string' || typeof email !== 'string' || typeof password !== 'string') {
                 return res.status(400).json({ error: 'Invalid request data' });
@@ -284,9 +277,7 @@ export default async function handler(req, res) {
             });
         }
 
-        // ═══════════════════════════════════════════════════════
-        // LOGIN
-        // ═══════════════════════════════════════════════════════
+        // ดำเนินการล็อกอินเข้าสู่ระบบ
         if (action === 'login') {
             await ensureLoginRisksSchema();
             if (typeof username !== 'string' || typeof password !== 'string') {

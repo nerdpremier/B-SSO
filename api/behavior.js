@@ -8,7 +8,7 @@
 //   - เรียกทุก ๆ 15 วินาทีขณะ user ยังมี session อยู่
 //   - ส่งข้อมูลเป็น JSON:
 //       {
-//         events: [ ... ],          // array ของ event objects (任意 structure)
+//         events: [ ... ],          // array ของ event objects (any structure)
 //         page:   string,           // optional: path/URL ปัจจุบัน
 //         meta:   { ... }           // optional: userAgent ฯลฯ
 //       }
