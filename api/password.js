@@ -1,5 +1,5 @@
 // ============================================================
-// 🔑 api/password.js — Combined Password Handler
+// api/password.js — Combined Password Handler
 //
 // รวม 2 password endpoints ไว้ในไฟล์เดียวเพื่อลด Vercel function count
 // Route ด้วย action field ใน request body:

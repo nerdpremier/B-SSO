@@ -1,5 +1,5 @@
 // ============================================================
-// 🔍 api/assess.js — Risk Assessment
+// api/assess.js — Risk Assessment
 // ทำหน้าที่ประเมินความเสี่ยงของ login attempt ก่อนที่ auth.js จะตรวจ password
 // คืน risk_level (LOW/MEDIUM/HIGH) และ logId สำหรับ session นั้น
 //

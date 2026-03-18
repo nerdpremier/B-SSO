@@ -1,5 +1,5 @@
 // ============================================================
-// 🧠 collector_behavior/collector.js
+// collector_behavior/collector.js
 //
 // Lightweight behavior collector สำหรับให้เว็บลูกค้า embed
 // ทำหน้าที่:

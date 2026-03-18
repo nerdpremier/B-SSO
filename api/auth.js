@@ -183,7 +183,7 @@ export default async function handler(req, res) {
 
     try {
         // ═══════════════════════════════════════════════════════
-        // 📝 REGISTER
+        // REGISTER
         // ═══════════════════════════════════════════════════════
         if (action === 'register') {
             if (typeof username !== 'string' || typeof email !== 'string' || typeof password !== 'string') {
@@ -285,7 +285,7 @@ export default async function handler(req, res) {
         }
 
         // ═══════════════════════════════════════════════════════
-        // 🔑 LOGIN
+        // LOGIN
         // ═══════════════════════════════════════════════════════
         if (action === 'login') {
             await ensureLoginRisksSchema();

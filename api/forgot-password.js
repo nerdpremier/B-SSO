@@ -1,5 +1,5 @@
 // ============================================================
-// 🔑 api/forgot-password.js — Password Reset Request
+// api/forgot-password.js — Password Reset Request
 // ทุก response เกี่ยวกับ email คืน SUCCESS_RESPONSE เสมอ (ป้องกัน email enumeration)
 // ============================================================
 import '../startup-check.js';
