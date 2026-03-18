@@ -1,5 +1,5 @@
 // ============================================================
-// 🚀 startup-check.js — Environment Variable Validation
+// startup-check.js — Environment Variable Validation
 //
 // ตรวจสอบ environment variables ทั้งหมดตอน cold start
 // ก่อนที่ application จะรับ request ใดๆ

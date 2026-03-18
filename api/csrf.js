@@ -1,5 +1,5 @@
 // ============================================================
-// 🔐 api/csrf.js — CSRF Token Endpoint (HMAC Double-Submit)
+// api/csrf.js — CSRF Token Endpoint (HMAC Double-Submit)
 // ============================================================
 import '../startup-check.js';
 import { serialize }          from 'cookie';

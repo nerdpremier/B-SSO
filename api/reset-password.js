@@ -1,5 +1,5 @@
 // ============================================================
-// 🔐 api/reset-password.js — Execute Password Reset
+// api/reset-password.js — Execute Password Reset
 // ============================================================
 import '../startup-check.js';
 import { pool }              from '../lib/db.js';

@@ -1,5 +1,5 @@
 // ============================================================
-// 🔐 api/auth.js — Register, Login & Email Verification
+// api/auth.js — Register, Login & Email Verification
 // ทำหน้าที่ 3 อย่าง:
 //   GET  ?action=verify-email&token=xxx — ยืนยัน email หลัง register
 //   POST action=register — สร้างบัญชีใหม่ + ส่ง verification email

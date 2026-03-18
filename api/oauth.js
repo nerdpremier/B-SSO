@@ -1,5 +1,5 @@
 // ============================================================
-// 🔐 oauth.js — OAuth 2.0 Combined Handler (Single Serverless Function)
+// oauth.js — OAuth 2.0 Combined Handler (Single Serverless Function)
 //
 // รวม 7 OAuth endpoints ไว้ในไฟล์เดียว เพื่อไม่เกิน Vercel function limit
 // Route ด้วย URL path ที่ตรวจจาก req.url:

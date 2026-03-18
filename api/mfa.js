@@ -1,5 +1,5 @@
 // ============================================================
-// 🔐 api/mfa.js — Combined MFA Handler
+// api/mfa.js — Combined MFA Handler
 //
 // รวม 3 MFA endpoints ไว้ในไฟล์เดียวเพื่อลด Vercel function count:
 //   - /api/mfa         → action: 'verify'

@@ -107,7 +107,7 @@ async function createApp() {
 // FIX: className was 'create-error' (no CSS rule). Now uses 'danger' to match CSS.
 function showCreateError(msg) {
   const el = document.getElementById('create-status');
-  el.textContent = '⚠️ ' + msg;
+  el.textContent = msg;
   el.className   = 'danger';
   el.hidden      = false;    // CSP-safe
   document.getElementById('btn-create').disabled    = false;
@@ -186,8 +186,8 @@ function formatDate(iso) {
 }
 async function copyText(elemId, btn) {
   const text = document.getElementById(elemId)?.textContent||'';
-  try { await navigator.clipboard.writeText(text); btn.textContent='✅ Copied'; setTimeout(()=>{btn.textContent='Copy';},1800); }
-  catch { btn.textContent='❌ Failed'; setTimeout(()=>{btn.textContent='Copy';},1800); }
+  try { await navigator.clipboard.writeText(text); btn.textContent='Copied'; setTimeout(()=>{btn.textContent='Copy';},1800); }
+  catch { btn.textContent='Failed'; setTimeout(()=>{btn.textContent='Copy';},1800); }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
