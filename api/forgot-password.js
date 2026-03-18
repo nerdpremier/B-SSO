@@ -1,7 +1,8 @@
 // ============================================================
-// api/forgot-password.js — Password Reset Request
+// Password Reset Request
 // ทุก response เกี่ยวกับ email คืน SUCCESS_RESPONSE เสมอ (ป้องกัน email enumeration)
 // ============================================================
+
 import '../startup-check.js';
 import { pool }              from '../lib/db.js';
 import { validateCsrfToken } from '../lib/csrf-utils.js';

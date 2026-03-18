@@ -1,5 +1,5 @@
 // ============================================================
-// api/session.js — Session Verification
+// Session Verification
 // ทำหน้าที่ตรวจสอบว่า JWT ใน session cookie ยังใช้งานได้หรือไม่
 // ถูกเรียกทุก page load ที่ต้องการ authentication
 //

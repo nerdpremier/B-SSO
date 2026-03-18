@@ -1,6 +1,7 @@
 // ============================================================
-// api/reset-password.js — Execute Password Reset
+// Execute Password Reset
 // ============================================================
+
 import '../startup-check.js';
 import { pool }              from '../lib/db.js';
 import { validateCsrfToken } from '../lib/csrf-utils.js';

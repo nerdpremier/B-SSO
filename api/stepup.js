@@ -1,5 +1,5 @@
 // ============================================================
-// 🪪 api/stepup.js — Step-up MFA for Customer Apps (Bearer)
+// Step-up MFA for Customer Apps (Bearer)
 //
 // Purpose:
 //   - Provide post-login "step-up" verification for customer apps that use OAuth Bearer tokens

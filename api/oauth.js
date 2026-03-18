@@ -1,7 +1,7 @@
 // ============================================================
-// oauth.js — OAuth 2.0 Combined Handler (Single Serverless Function)
+// OAuth 2.0 Combined Handler (Single Serverless Function)
 //
-// รวม 7 OAuth endpoints ไว้ในไฟล์เดียว เพื่อไม่เกิน Vercel function limit
+// รวม 7 OAuth endpoints 
 // Route ด้วย URL path ที่ตรวจจาก req.url:
 //
 //   /api/oauth/clients      → handleClients()     (GET / POST / DELETE / PATCH)
@@ -21,6 +21,7 @@
 //   SSO Exchange     — one-time token สำหรับ redirect-back flow
 //   Client Rotate    — PATCH /api/oauth/clients (rotate client_secret)
 // ============================================================
+
 import '../startup-check.js';
 import { pool }           from '../lib/db.js';
 import { checkRateLimit } from '../lib/rate-limit.js';

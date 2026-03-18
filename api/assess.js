@@ -11,12 +11,8 @@
 //   5. คำนวณ risk score จาก fingerprint match + recent fail count
 //   6. INSERT บันทึกลง login_risks + COMMIT (ทุก level รวม HIGH)
 //   7. คืน risk_level + logId (HIGH จะ return logId: null เสมอ)
-//
-// Security guarantees:
-//   - Non-existent username → response เหมือน MEDIUM (ไม่ leak ว่า user มีอยู่)
-//   - FK violation (23503) → response เหมือน HIGH (ป้องกัน enumeration)
-//   - Advisory lock ต่อ username → ป้องกัน TOCTOU บน concurrent requests
 // ============================================================
+
 import '../startup-check.js';
 import { pool }             from '../lib/db.js';
 import { checkRateLimit }   from '../lib/rate-limit.js';

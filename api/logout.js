@@ -1,5 +1,5 @@
 // ============================================================
-// 🚪 api/logout.js — Logout + JWT Revocation + Cron Cleanup
+// Logout + JWT Revocation + Cron Cleanup
 //
 // รวม 2 handlers ไว้ในไฟล์เดียวเพื่อไม่เกิน Vercel 12-function limit
 // Route ด้วย method:
@@ -13,6 +13,7 @@
 //   POST: CSRF + rate limit (idempotent, คืน success เสมอ)
 //   GET:  timing-safe CRON_SECRET check + rate limit
 // ============================================================
+
 import '../startup-check.js';
 import { serialize, parse }  from 'cookie';
 import jwt                   from 'jsonwebtoken';

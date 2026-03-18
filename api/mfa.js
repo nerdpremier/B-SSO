@@ -1,5 +1,5 @@
 // ============================================================
-// api/mfa.js — Combined MFA Handler
+// Combined MFA Handler
 //
 // รวม 3 MFA endpoints ไว้ในไฟล์เดียวเพื่อลด Vercel function count:
 //   - /api/mfa         → action: 'verify'
@@ -11,6 +11,7 @@
 //   { "source": "/api/verify-mfa", "destination": "/api/mfa.js?action=verify" }
 //   { "source": "/api/resend-mfa", "destination": "/api/mfa.js?action=resend" }
 // ============================================================
+
 import '../startup-check.js';
 import { pool }                from '../lib/db.js';
 import { validateCsrfToken }   from '../lib/csrf-utils.js';

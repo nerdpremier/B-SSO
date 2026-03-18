@@ -1,5 +1,5 @@
 // ============================================================
-// api/behavior.js — Post‑Login Behavior Proxy
+// Post‑Login Behavior Proxy
 //
 // รับข้อมูล behavior จากเว็บลูกค้า (ผ่าน browser → SSO)
 // แล้ว proxy ต่อไปยัง risk engine ที่ deploy บน Railway

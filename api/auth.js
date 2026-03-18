@@ -11,6 +11,7 @@
 //   - ยืนยัน JWT ก่อนบันทึกข้อมูลเพื่อความสมบูรณ์
 //   - จัดเก็บอีเมลเป็นพิมพ์เล็กเสมอ
 // ============================================================
+
 import '../startup-check.js';
 import { pool }                from '../lib/db.js';
 import { validateCsrfToken }   from '../lib/csrf-utils.js';

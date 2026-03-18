@@ -1,6 +1,7 @@
 // ============================================================
-// api/csrf.js — CSRF Token Endpoint (HMAC Double-Submit)
+// CSRF Token Endpoint (HMAC Double-Submit)
 // ============================================================
+
 import '../startup-check.js';
 import { serialize }          from 'cookie';
 import { generateCsrfToken }  from '../lib/csrf-utils.js';
