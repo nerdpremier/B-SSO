@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; form-action 'self'; base-uri 'none';">
+        content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; form-action 'self'; base-uri 'none';">
   <title>Authorize Access — CARS SSO</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -47,14 +47,14 @@
 
         <div class="permission-box" role="list" aria-label="Requested permissions">
           <div class="permission-item" role="listitem">
-            <div class="permission-icon" aria-hidden="true">👤</div>
+            <div class="permission-icon" aria-hidden="true"><i class="fas fa-user"></i></div>
             <div>
               <div class="permission-name">Your username</div>
               <div class="permission-desc">Read-only — not your password</div>
             </div>
           </div>
           <div class="permission-item" role="listitem">
-            <div class="permission-icon" aria-hidden="true">✅</div>
+            <div class="permission-icon" aria-hidden="true"><i class="fas fa-check"></i></div>
             <div>
               <div class="permission-name">Login status</div>
               <div class="permission-desc">Confirms you're authenticated</div>
@@ -75,7 +75,7 @@
 
       <!-- Error state -->
       <div id="error-ui" class="authorize-error-ui" hidden>
-        <div class="authorize-error-icon" aria-hidden="true">⚠️</div>
+        <div class="authorize-error-icon" aria-hidden="true"><i class="fas fa-exclamation-triangle"></i></div>
         <h1 class="page-title">Something went <em>wrong</em></h1>
         <div id="error-msg" class="status-box danger" role="alert">
           Unable to load authorization data
