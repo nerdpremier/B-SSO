@@ -87,7 +87,8 @@ async function init() {
 
     if (res.status === 401) {
       // ไม่ได้ login → redirect ไป login พร้อม ?next= เพื่อกลับมา consent หลัง login
-      window.location.replace(`/login?next=${encodeURIComponent(window.location.href)}`);
+      const nextUrl = `${window.location.href}`;
+      window.location.replace(`/login?next=${encodeURIComponent(nextUrl)}`);
       return;
     }
     if (!res.ok) { showError(data?.error || 'Failed to verify request.'); return; }

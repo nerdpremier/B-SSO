@@ -177,7 +177,32 @@ async function preLoginCheck() {
     try {
         const fingerprint = getSecureFp();
         const device = `Screen:${screen.width}x${screen.height} | CPU:${navigator.hardwareConcurrency}`;
-        const riskRes  = await secureFetch('/api/assess',{method:'POST',body:JSON.stringify({username,device,fingerprint})});
+        
+        // Check if we should reuse existing logId for OAuth flow
+        const storedLogId = sessionStorage.getItem('oauth_logId');
+        const storedUsername = sessionStorage.getItem('oauth_username');
+        let riskRes;
+        
+        if (storedLogId && storedUsername && storedUsername === username) {
+            // Reuse existing logId for OAuth flow
+            riskRes = await secureFetch('/api/assess',{
+                method:'POST',
+                body:JSON.stringify({
+                    username,device,fingerprint,
+                    reuse_log_id: storedLogId
+                })
+            });
+            // Clear stored credentials after use
+            sessionStorage.removeItem('oauth_logId');
+            sessionStorage.removeItem('oauth_username');
+        } else {
+            // Create new risk assessment
+            riskRes = await secureFetch('/api/assess',{
+                method:'POST',
+                body:JSON.stringify({username,device,fingerprint})
+            });
+        }
+        
         const riskData = await riskRes.json();
         if (riskData.risk_level==='HIGH') { startAccountLockdown(60); return; }
         if (!riskRes.ok) return updateStatus('danger','Something went wrong. Please try again later.');
@@ -190,6 +215,12 @@ async function preLoginCheck() {
         // ไม่ส่ง nextUrl เพราะ validateRedirectBack() จะ reject URL ที่ไม่ใช่ registered redirect_uri
         const authBody = {action:'login',username,password,fingerprint,logId:safeLogId,remember};
         if (redirect_back) authBody.redirect_back = redirect_back;
+
+        // Store logId in sessionStorage for potential OAuth flow reuse
+        if (redirect_back) {
+            sessionStorage.setItem('oauth_logId', safeLogId);
+            sessionStorage.setItem('oauth_username', username);
+        }
 
         const authRes  = await secureFetch('/api/auth',{method:'POST',body:JSON.stringify(authBody)});
         const authData = await authRes.json();

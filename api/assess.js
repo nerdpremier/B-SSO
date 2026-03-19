@@ -19,6 +19,7 @@ import { checkRateLimit }   from '../lib/rate-limit.js';
 import { getClientIp }      from '../lib/ip-utils.js';
 import { validateCsrfToken } from '../lib/csrf-utils.js';
 import { ensureLoginRisksSchema } from '../lib/risk-score.js';
+import { LOGID_TTL_MINUTES } from '../lib/constants.js';
 import crypto from 'crypto';
 import {
     setSecurityHeaders, auditLog,
@@ -89,7 +90,7 @@ export default async function handler(req, res) {
             return res.status(400).json({ error: 'Invalid request data' });
         }
 
-        const { username, device, fingerprint } = req.body;
+        const { username, device, fingerprint, reuse_log_id } = req.body;
 
         if (typeof username !== 'string' || !username || username.length > 32) {
             return res.status(400).json({ error: 'Invalid request data' });
@@ -115,6 +116,16 @@ export default async function handler(req, res) {
             return res.status(400).json({ error: 'Invalid request data' });
         }
 
+        // Validate reuse_log_id if provided
+        if (reuse_log_id !== undefined) {
+            if (typeof reuse_log_id !== 'string' || reuse_log_id.length > 32) {
+                return res.status(400).json({ error: 'Invalid request data' });
+            }
+            if (!USER_REGEX.test(reuse_log_id)) {
+                return res.status(400).json({ error: 'Invalid request data' });
+            }
+        }
+
         await ensureLoginRisksSchema();
 
         try {
@@ -133,6 +144,31 @@ export default async function handler(req, res) {
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
+
+            // Check if we should reuse an existing logId
+            if (reuse_log_id) {
+                const parsedReuseId = Number(reuse_log_id);
+                if (Number.isInteger(parsedReuseId) && parsedReuseId > 0) {
+                    const existingRes = await client.query(
+                        `SELECT id, risk_level, pre_login_score
+                         FROM login_risks
+                         WHERE id = $1 AND username = $2
+                           AND created_at > NOW() - make_interval(mins => $3)
+                           AND is_success = FALSE
+                         FOR UPDATE`,
+                        [parsedReuseId, username, LOGID_TTL_MINUTES]
+                    );
+                    
+                    if (existingRes.rows[0]) {
+                        const existing = existingRes.rows[0];
+                        auditLog('ASSESS_REUSE_LOGID', { username, ip, reusedId: existing.id });
+                        return res.status(200).json({ 
+                            risk_level: existing.risk_level, 
+                            logId: existing.id 
+                        });
+                    }
+                }
+            }
 
             // Advisory lock ต่อ username ป้องกัน TOCTOU:
             //   ใช้ upper 64 bits ของ MD5 แทน hashtext() (int4, 32-bit)
