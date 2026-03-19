@@ -197,8 +197,17 @@ export default async function handler(req, res) {
 
             // ── Scoring logic ─────────────────────────────────
             // baseline 0.1 → +0.4 (device ใหม่) → +0.3 (fail > 3) → 1.0 (fail >= 5)
+            // [FIX-OAUTH-FLOW] ถ้าเป็น OAuth flow จากเว็บลูกค้า → ลดความเสี่ยง
+            const isOAuthFlow = req.headers.referer?.includes('/oauth/authorize') || 
+                                req.headers.origin?.includes('cars-sso.vercel.app');
+            
             let score = 0.1;
-            if (!fp_match)           score += 0.4;
+            if (!fp_match && !isOAuthFlow) score += 0.4; // device ใหม่ แต่ไม่ใช่ OAuth → +0.4
+            if (isOAuthFlow) {
+                // OAuth flow จากเว็บลูกค้า → ถือว่า trusted
+                console.log('[DEBUG] assess.js OAuth flow detected, reducing risk score');
+                score = 0.05; // ต่ำกว่า baseline เพื่อให้เป็น LOW
+            }
             if (currentAttempt > 3)  score += 0.3;
             if (currentAttempt >= 5) score  = 1.0;
 
