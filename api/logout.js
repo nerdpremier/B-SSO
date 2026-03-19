@@ -121,10 +121,25 @@ export default async function handler(req, res) {
         if (decoded?.jti && decoded?.exp) {
             try {
                 const expiresAt = new Date(decoded.exp * 1000).toISOString();
+                
+                // Revoke JWT session token
                 await pool.query(
                     'INSERT INTO revoked_tokens (jti, expires_at) VALUES ($1, $2) ON CONFLICT DO NOTHING',
                     [decoded.jti, expiresAt]
                 );
+                
+                // Revoke all SSO tokens for this user
+                await pool.query(
+                    'UPDATE sso_tokens SET used = TRUE WHERE user_id = (SELECT id FROM users WHERE username = $1) AND used = FALSE',
+                    [decoded.username]
+                );
+                
+                // Revoke all OAuth tokens for this user
+                await pool.query(
+                    'UPDATE oauth_tokens SET revoked_at = NOW() WHERE username = $1 AND revoked_at IS NULL',
+                    [decoded.username]
+                );
+                
                 auditLog('LOGOUT_SUCCESS', { username: decoded.username, jti: decoded.jti, ip });
             } catch (dbErr) {
                 console.error('[ERROR] logout.js revoke token DB error:', dbErr.message);
