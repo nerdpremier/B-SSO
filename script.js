@@ -173,7 +173,6 @@ async function handleRegister() {
                 
                 // ใช้ href แทน replace เพื่อให้ params ติดไปกับ URL
                 const dest = loginUrl.toString();
-                console.log('[DEBUG] Register redirecting to:', dest);
                 setTimeout(() => window.location.href = dest, 1500);
             }
         } else { updateStatus('danger', data.error||'An error occurred. Please try again.'); }
@@ -198,10 +197,8 @@ async function preLoginCheck() {
     
     // [FIX-DOUBLE-ENCODE] decode nextUrl ที่ถูก encode ซ้ำ
     let nextUrl = sp.get('next');
-    console.log('[DEBUG] Raw URL params:', Object.fromEntries(sp.entries()));
     
     if (nextUrl) {
-        console.log('[DEBUG] Raw nextUrl:', nextUrl);
         try {
             // ลอง decode ทีละรอบจนกว่าจะไม่ error
             let decoded = nextUrl;
@@ -211,23 +208,18 @@ async function preLoginCheck() {
                     const prevDecoded = decoded;
                     decoded = decodeURIComponent(decoded);
                     if (prevDecoded === decoded) break; // ไม่เปลี่ยนแล้ว
-                    console.log(`[DEBUG] Decode attempt ${attempts + 1}:`, prevDecoded, '→', decoded);
                     attempts++;
                 } catch {
                     break; // decode ล้มเหลว
                 }
             }
             nextUrl = decoded;
-            console.log('[DEBUG] Final decoded nextUrl:', nextUrl);
             
             // [FIX-OAUTH-FLOW] ตรวจสอบว่าเป็น OAuth authorize URL หรือไม่
             try {
                 const parsedNext = new URL(nextUrl, window.location.origin);
-                console.log('[DEBUG] Parsed pathname:', parsedNext.pathname);
-                console.log('[DEBUG] Full parsed URL:', parsedNext.toString());
-                if (parsedNext.pathname === '/oauth/authorize') {
+                        if (parsedNext.pathname === '/oauth/authorize') {
                     // เป็น OAuth flow → ไม่ต้องสร้าง SSO token
-                    console.log('[DEBUG] OAuth flow detected, will redirect to authorize page');
                 }
             } catch (urlErr) {
                 console.error('[ERROR] Failed to parse decoded URL:', urlErr);
@@ -239,8 +231,6 @@ async function preLoginCheck() {
         }
     }
     
-    console.log('[DEBUG] Final nextUrl after processing:', nextUrl);
-    console.log('[DEBUG] redirect_back:', sp.get('redirect_back'));
     
     nextUrl = nextUrl || (pendingRedirect?.startsWith('/') ? pendingRedirect : null) || null;
     const redirect_back = sp.get('redirect_back') || (pendingRedirect && !pendingRedirect.startsWith('/') ? pendingRedirect : null) || null;
@@ -321,22 +311,16 @@ async function preLoginCheck() {
                 // [FIX-REDIRECT] ลำดับ priority: SSO redirect → same-origin next → welcome
                 // [FIX-OAUTH-FLOW] ถ้า nextUrl เป็น OAuth authorize → ไปที่ nextUrl ไม่ใช่ welcome
                 let dest = authData.redirectUrl;
-                console.log('[DEBUG] authData.redirectUrl:', authData.redirectUrl);
-                console.log('[DEBUG] nextUrl:', nextUrl);
                 
                 if (!dest) {
                     // ไม่มี SSO redirectUrl → ตรวจสอบว่าเป็น OAuth flow หรือไม่
                     if (nextUrl && nextUrl.includes('/oauth/authorize')) {
                         dest = nextUrl; // OAuth flow → ไป authorize page
-                        console.log('[DEBUG] Using OAuth flow, redirecting to:', dest);
                     } else {
                         dest = nextUrl || '/welcome'; // ปกติ → ไป nextUrl หรือ welcome
-                        console.log('[DEBUG] Using normal flow, redirecting to:', dest);
                     }
                 } else {
-                    console.log('[DEBUG] Using SSO redirect, redirecting to:', dest);
                 }
-                console.log('[DEBUG] Final destination:', dest);
                 setTimeout(()=>window.location.href=dest,1000);
             }
         } else {
@@ -473,7 +457,6 @@ async function executePasswordReset() {
             if (nextUrl) loginUrl.searchParams.set('next', nextUrl);
             if (redirectBack) loginUrl.searchParams.set('redirect_back', redirectBack);
             const dest = (nextUrl || redirectBack) ? loginUrl.toString() : '/login';
-            console.log('[DEBUG] Password reset redirecting to:', dest);
             setTimeout(() => window.location.href = dest, 2000); 
         }
         else updateStatus('danger',data.error||'An error occurred. Please try again.');
