@@ -262,7 +262,16 @@ async function preLoginCheck() {
             } else {
                 updateStatus('success','Signed in successfully. Redirecting…');
                 // [FIX-REDIRECT] ลำดับ priority: SSO redirect → same-origin next → welcome
-                const dest = authData.redirectUrl || nextUrl || '/welcome';
+                // [FIX-OAUTH-FLOW] ถ้า nextUrl เป็น OAuth authorize → ไปที่ nextUrl ไม่ใช่ welcome
+                let dest = authData.redirectUrl;
+                if (!dest) {
+                    // ไม่มี SSO redirectUrl → ตรวจสอบว่าเป็น OAuth flow หรือไม่
+                    if (nextUrl && nextUrl.includes('/oauth/authorize')) {
+                        dest = nextUrl; // OAuth flow → ไป authorize page
+                    } else {
+                        dest = nextUrl || '/welcome'; // ปกติ → ไป nextUrl หรือ welcome
+                    }
+                }
                 setTimeout(()=>window.location.href=dest,1000);
             }
         } else {
@@ -299,7 +308,16 @@ async function verifyMFA() {
              'mfa_redirect_back','mfa_next_url'].forEach(k=>sessionStorage.removeItem(k));
             updateStatus('success','Identity verified. Redirecting…');
             // [FIX-REDIRECT] ลำดับ priority: SSO redirect → same-origin next → welcome
-            const dest = data.redirectUrl || nextUrl || '/welcome';
+            // [FIX-OAUTH-FLOW] ถ้า nextUrl เป็น OAuth authorize → ไปที่ nextUrl ไม่ใช่ welcome
+            let dest = data.redirectUrl;
+            if (!dest) {
+                // ไม่มี SSO redirectUrl → ตรวจสอบว่าเป็น OAuth flow หรือไม่
+                if (nextUrl && nextUrl.includes('/oauth/authorize')) {
+                    dest = nextUrl; // OAuth flow → ไป authorize page
+                } else {
+                    dest = nextUrl || '/welcome'; // ปกติ → ไป nextUrl หรือ welcome
+                }
+            }
             setTimeout(()=>window.location.href=dest,1000);
         } else {
             const data = await res.json();
