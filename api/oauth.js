@@ -571,7 +571,7 @@ async function handleToken(req, res, ip) {
 
     if (!requireJson(req, res)) return;
     const { grant_type, code, redirect_uri, client_id, client_secret,
-            code_verifier, refresh_token } = req.body;
+            code_verifier, refresh_token, pre_login_log_id } = req.body;
 
     if (!grant_type || !['authorization_code', 'refresh_token'].includes(grant_type))
         return res.status(400).json({ error: 'unsupported_grant_type' });
@@ -663,16 +663,85 @@ async function handleToken(req, res, ip) {
 
             await tokenClient.query('UPDATE oauth_codes SET used = TRUE WHERE id = $1', [codeRow.id]);
 
+            // ── Create access token ─────────────────────────────
             const scope       = codeRow.scope || DEFAULT_SCOPE;
             const accessToken = crypto.randomBytes(32).toString('hex');
             const accessHash  = hashToken(accessToken);
             const accessExp   = new Date(Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000);
 
-            await tokenClient.query(
+            const accessResult = await tokenClient.query(
                 `INSERT INTO oauth_tokens (token_hash, token_type, client_id, username, scope, expires_at)
-                 VALUES ($1, 'access', $2, $3, $4, $5)`,
+                 VALUES ($1, 'access', $2, $3, $4, $5)
+                 RETURNING id`,
                 [accessHash, client_id, codeRow.username, scope, accessExp]
             );
+            const accessTokenId = accessResult.rows[0].id;
+
+            // ── Link/Create pre-login record for OAuth token session ─────
+            // Find pre-login record that was created during authorize flow
+            let preLoginScore = 0.1; // default low risk for OAuth flows
+            let preLoginLogId = null;
+            
+            try {
+                // First, try to use pre_login_log_id sent from client (if provided)
+                if (pre_login_log_id) {
+                    const parsedId = Number(pre_login_log_id);
+                    if (Number.isInteger(parsedId) && parsedId > 0) {
+                        const clientPreLoginRes = await tokenClient.query(
+                            `SELECT id, pre_login_score 
+                             FROM login_risks 
+                             WHERE id = $1 AND username = $2
+                               AND created_at > NOW() - INTERVAL '30 minutes'
+                             LIMIT 1`,
+                            [parsedId, codeRow.username]
+                        );
+                        
+                        if (clientPreLoginRes.rows[0]) {
+                            preLoginLogId = clientPreLoginRes.rows[0].id;
+                            preLoginScore = clientPreLoginRes.rows[0].pre_login_score || 0.1;
+                            console.log(`[INFO] oauth.js: Using client pre_login_log_id=${preLoginLogId}, score=${preLoginScore}`);
+                        }
+                    }
+                }
+                
+                // If no client pre_login_log_id or not found, try to find existing record
+                if (!preLoginLogId) {
+                    const preLoginRes = await tokenClient.query(
+                        `SELECT id, pre_login_score 
+                         FROM login_risks 
+                         WHERE username = $1 AND is_success = TRUE 
+                           AND created_at > NOW() - INTERVAL '30 minutes'
+                         ORDER BY created_at DESC 
+                         LIMIT 1`,
+                        [codeRow.username]
+                    );
+                    
+                    if (preLoginRes.rows[0]) {
+                        preLoginLogId = preLoginRes.rows[0].id;
+                        preLoginScore = preLoginRes.rows[0].pre_login_score || 0.1;
+                    }
+                }
+                
+                // Create pre-login record for OAuth token
+                await tokenClient.query(
+                    `INSERT INTO login_risks 
+                     (username, device, fingerprint, risk_level, pre_login_score, session_jti, is_success)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                    [
+                        codeRow.username,
+                        `oauth_token:${accessTokenId}`,
+                        `oauth:${client_id}:${accessTokenId}`,
+                        'LOW', // OAuth token flows are considered LOW risk
+                        preLoginScore,
+                        `oauth:${accessTokenId}`,
+                        true
+                    ]
+                );
+                console.log(`[INFO] oauth.js: Created pre-login record for OAuth token ${accessTokenId}, score=${preLoginScore}`);
+            } catch (preLoginErr) {
+                console.error('[WARN] oauth.js pre-login record creation failed:', preLoginErr.message);
+                // Don't fail the OAuth flow, just log the error
+            }
 
             // ── Refresh Token ──────────────────────────────────
             const refreshToken = crypto.randomBytes(32).toString('hex');
@@ -752,11 +821,49 @@ async function handleToken(req, res, ip) {
             const accessHash  = hashToken(accessToken);
             const accessExp   = new Date(Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000);
 
-            await tokenClient.query(
+            const newAccessResult = await tokenClient.query(
                 `INSERT INTO oauth_tokens (token_hash, token_type, client_id, username, scope, expires_at)
-                 VALUES ($1, 'access', $2, $3, $4, $5)`,
+                 VALUES ($1, 'access', $2, $3, $4, $5)
+                 RETURNING id`,
                 [accessHash, client_id, rt.username, scope, accessExp]
             );
+            const newAccessTokenId = newAccessResult.rows[0].id;
+
+            // ── Create pre-login record for refreshed OAuth token ─────
+            try {
+                // Find existing pre-login record for this user
+                const preLoginRes = await tokenClient.query(
+                    `SELECT id, pre_login_score 
+                     FROM login_risks 
+                     WHERE username = $1 AND is_success = TRUE 
+                       AND created_at > NOW() - INTERVAL '30 minutes'
+                     ORDER BY created_at DESC 
+                     LIMIT 1`,
+                    [rt.username]
+                );
+                
+                const preLoginScore = preLoginRes.rows[0]?.pre_login_score || 0.1;
+                
+                // Create pre-login record for the refreshed access token
+                await tokenClient.query(
+                    `INSERT INTO login_risks 
+                     (username, device, fingerprint, risk_level, pre_login_score, session_jti, is_success)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                    [
+                        rt.username,
+                        `oauth_token_refreshed:${newAccessTokenId}`,
+                        `oauth:${client_id}:${newAccessTokenId}`,
+                        'LOW', // Refreshed OAuth tokens are also LOW risk
+                        preLoginScore,
+                        `oauth:${newAccessTokenId}`,
+                        true
+                    ]
+                );
+                console.log(`[INFO] oauth.js: Created pre-login record for refreshed OAuth token ${newAccessTokenId}, score=${preLoginScore}`);
+            } catch (refreshPreLoginErr) {
+                console.error('[WARN] oauth.js refresh pre-login record creation failed:', refreshPreLoginErr.message);
+                // Don't fail OAuth flow, just log error
+            }
 
             // ออก refresh token ใหม่ (rotation)
             const newRefreshToken = crypto.randomBytes(32).toString('hex');
