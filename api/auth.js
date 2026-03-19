@@ -489,23 +489,36 @@ export default async function handler(req, res) {
                 // [BUG-006 FIX] SSO Redirect สำหรับ LOW path
                 let redirectUrl = null;
                 if (redirect_back && user?.id) {
-                    const isValidRedirect = await validateRedirectBack(redirect_back);
-                    if (isValidRedirect) {
-                        const sso_token = crypto.randomUUID();
-                        try {
-                            await pool.query(
-                                'INSERT INTO sso_tokens (token, user_id) VALUES ($1, $2)',
-                                [sso_token, user.id]
-                            );
-                            redirectUrl = `${redirect_back}?sso_token=${sso_token}`;
-                        } catch (ssoErr) {
-                            console.error('[WARN] auth.js SSO token insert failed:', ssoErr.message);
+                    // [FIX-OAUTH-FLOW] ตรวจสอบว่ามี nextUrl ที่เป็น OAuth authorize หรือไม่
+                    // ถ้ามี → เป็น OAuth flow → ไม่ต้องสร้าง SSO token
+                    const hasOAuthFlow = req.body.next && 
+                        typeof req.body.next === 'string' && 
+                        req.body.next.includes('/oauth/authorize');
+                    
+                    if (!hasOAuthFlow) {
+                        const isValidRedirect = await validateRedirectBack(redirect_back);
+                        if (isValidRedirect) {
+                            const sso_token = crypto.randomUUID();
+                            try {
+                                await pool.query(
+                                    'INSERT INTO sso_tokens (token, user_id) VALUES ($1, $2)',
+                                    [sso_token, user.id]
+                                );
+                                redirectUrl = `${redirect_back}?sso_token=${sso_token}`;
+                            } catch (ssoErr) {
+                                console.error('[WARN] auth.js SSO token insert failed:', ssoErr.message);
+                            }
+                        } else {
+                            // Fallback: redirect_back ไม่ valid → กลับไป authorize page
+                            console.error('[WARN] auth.js: redirect_back not registered:', redirect_back);
+                            auditLog('LOGIN_REDIRECT_BACK_INVALID', { username, redirect_back, ip });
+                            redirectUrl = null; // ให้ไปที่ nextUrl (authorize page)
                         }
                     } else {
-                        // Fallback: redirect_back ไม่ valid → กลับไป authorize page
-                        console.error('[WARN] auth.js: redirect_back not registered:', redirect_back);
-                        auditLog('LOGIN_REDIRECT_BACK_INVALID', { username, redirect_back, ip });
-                        redirectUrl = null; // ให้ไปที่ nextUrl (authorize page)
+                        // OAuth flow - ไม่สร้าง SSO token ให้ไปที่ authorize page
+                        console.log('[DEBUG] OAuth flow detected, skipping SSO token creation');
+                        auditLog('LOGIN_OAUTH_FLOW_DETECTED', { username, redirect_back, ip });
+                        redirectUrl = null;
                     }
                 }
 

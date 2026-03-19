@@ -175,8 +175,17 @@ async function preLoginCheck() {
     if (nextUrl) {
         try {
             // decode 2 รอบเพื่อจัดการ double encoding
-            nextUrl = decodeURIComponent(decodeURIComponent(nextUrl));
-        } catch {
+            const decodedOnce = decodeURIComponent(nextUrl);
+            nextUrl = decodeURIComponent(decodedOnce);
+            
+            // [FIX-OAUTH-FLOW] ตรวจสอบว่าเป็น OAuth authorize URL หรือไม่
+            const parsedNext = new URL(nextUrl, window.location.origin);
+            if (parsedNext.pathname === '/oauth/authorize') {
+                // เป็น OAuth flow → ไม่ต้องสร้าง SSO token
+                console.log('[DEBUG] OAuth flow detected, will redirect to authorize page');
+            }
+        } catch (err) {
+            console.error('[ERROR] Failed to decode nextUrl:', err);
             // ถ้า decode ล้มเหลว ใช้ค่าเดิม
         }
     }
