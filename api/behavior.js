@@ -299,8 +299,10 @@ export default async function handler(req, res) {
                     loginRiskId = byId.rows[0].id;
                     preLoginScore = Number(byId.rows[0].pre_login_score || 0);
                 }
-            } else if (sessionJti) {
-                // fallback (เดิม): lookup ด้วย session_jti
+            }
+            
+            // (2) ถ้าไม่เจอจาก ID ให้ลองหาด้วย session_jti
+            if (!loginRiskId && sessionJti) {
                 const preRes = await pool.query(
                     `SELECT id, pre_login_score
                      FROM login_risks
@@ -312,6 +314,24 @@ export default async function handler(req, res) {
                 if (preRes.rows[0]) {
                     loginRiskId = preRes.rows[0].id;
                     preLoginScore = Number(preRes.rows[0].pre_login_score || 0);
+                }
+            }
+            
+            // (3) FINAL FALLBACK: หา pre-login score ล่าสุดของ username ที่ success ภายใน 30 นาที
+            if (!loginRiskId) {
+                const fallbackRes = await pool.query(
+                    `SELECT id, pre_login_score
+                     FROM login_risks
+                     WHERE username = $1 AND is_success = TRUE
+                       AND created_at > NOW() - INTERVAL '30 minutes'
+                     ORDER BY created_at DESC
+                     LIMIT 1`,
+                    [username]
+                );
+                if (fallbackRes.rows[0]) {
+                    loginRiskId = fallbackRes.rows[0].id;
+                    preLoginScore = Number(fallbackRes.rows[0].pre_login_score || 0);
+                    console.log(`[INFO] behavior.js: Using fallback pre-login score for ${username}, login_risk_id=${loginRiskId}`);
                 }
             }
         } catch (preErr) {
