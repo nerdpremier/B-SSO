@@ -133,6 +133,25 @@ async function handleRegister() {
     const ie = validateInputs(username,password); if (ie) return updateStatus('danger',ie);
     const ee = validateEmail(email);              if (ee) return updateStatus('danger',ee);
     updateStatus('loading','Creating your account…');
+    
+    // [FIX-OAUTH-FLOW] เก็บ OAuth params ไว้ก่อน register
+    const sp = new URLSearchParams(window.location.search);
+    let nextUrl = sp.get('next');
+    let redirectBack = sp.get('redirect_back');
+    
+    // Decode nextUrl ถ้ามี
+    if (nextUrl) {
+        try {
+            let decoded = nextUrl;
+            for (let i = 0; i < 3; i++) {
+                const prev = decoded;
+                decoded = decodeURIComponent(decoded);
+                if (prev === decoded) break;
+            }
+            nextUrl = decoded;
+        } catch {}
+    }
+    
     try {
         const res  = await secureFetch('/api/auth',{method:'POST',body:JSON.stringify({action:'register',username,email,password})});
         const data = await res.json();
@@ -143,12 +162,19 @@ async function handleRegister() {
                 if (form) form.hidden = true;
                 // [FIX] บันทึก next/redirect_back ไว้ใน sessionStorage
                 // เมื่อ user verify email แล้วกลับมา login ใหม่ params จะยังอยู่
-                const sp2 = new URLSearchParams(window.location.search);
-                const pendingNext = sp2.get('next') || sp2.get('redirect_back');
+                const pendingNext = nextUrl || redirectBack;
                 if (pendingNext) sessionStorage.setItem('post_verify_redirect', pendingNext);
             } else {
                 updateStatus('success','Account created! Redirecting…');
-                setTimeout(()=>window.location.href='/login',1500);
+                // [FIX-OAUTH-FLOW] redirect ไป login พร้อม OAuth params
+                const loginUrl = new URL('/login', window.location.origin);
+                if (nextUrl) loginUrl.searchParams.set('next', nextUrl);
+                if (redirectBack) loginUrl.searchParams.set('redirect_back', redirectBack);
+                
+                // ใช้ href แทน replace เพื่อให้ params ติดไปกับ URL
+                const dest = loginUrl.toString();
+                console.log('[DEBUG] Register redirecting to:', dest);
+                setTimeout(() => window.location.href = dest, 1500);
             }
         } else { updateStatus('danger', data.error||'An error occurred. Please try again.'); }
     } catch (err) {
@@ -413,11 +439,39 @@ async function executePasswordReset() {
     const err=validatePassword(newPw); if (err) return updateStatus('danger',err);
     const token=new URLSearchParams(window.location.search).get('token');
     if (!token) return updateStatus('danger','Invalid link. Please request a new reset link.');
+    
+    // [FIX-OAUTH-FLOW] เก็บ OAuth params ไว้ก่อน reset password
+    const sp = new URLSearchParams(window.location.search);
+    let nextUrl = sp.get('next');
+    let redirectBack = sp.get('redirect_back');
+    
+    // Decode nextUrl ถ้ามี
+    if (nextUrl) {
+        try {
+            let decoded = nextUrl;
+            for (let i = 0; i < 3; i++) {
+                const prev = decoded;
+                decoded = decodeURIComponent(decoded);
+                if (prev === decoded) break;
+            }
+            nextUrl = decoded;
+        } catch {}
+    }
+    
     updateStatus('loading','Saving your new password…');
     try {
         const res=await secureFetch('/api/password',{method:'POST',body:JSON.stringify({action:'reset',token,password:newPw})});
         const data=await res.json();
-        if (res.ok) { updateStatus('success','Password updated. Redirecting to sign in…'); setTimeout(()=>window.location.href='/login',2000); }
+        if (res.ok) { 
+            updateStatus('success','Password updated. Redirecting to sign in…'); 
+            // [FIX-OAUTH-FLOW] redirect ไป login พร้อม OAuth params
+            const loginUrl = new URL('/login', window.location.origin);
+            if (nextUrl) loginUrl.searchParams.set('next', nextUrl);
+            if (redirectBack) loginUrl.searchParams.set('redirect_back', redirectBack);
+            const dest = (nextUrl || redirectBack) ? loginUrl.toString() : '/login';
+            console.log('[DEBUG] Password reset redirecting to:', dest);
+            setTimeout(() => window.location.href = dest, 2000); 
+        }
         else updateStatus('danger',data.error||'An error occurred. Please try again.');
     } catch (err) { updateStatus('danger', err.name==='AbortError'?'Request timed out.':'Something went wrong.'); }
 }
