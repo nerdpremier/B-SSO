@@ -86,9 +86,16 @@ async function init() {
     data = await res.json();
 
     if (res.status === 401) {
-      // ไม่ได้ login → redirect ไป login พร้อม ?next= เพื่อกลับมา consent หลัง login
+      // ไม่ได้ login → redirect ไป login พร้อม ?next= และ ?redirect_back= เพื่อกลับมา consent หลัง login
       const nextUrl = `${window.location.href}`;
-      window.location.replace(`/login?next=${encodeURIComponent(nextUrl)}`);
+      const currentUrl = new URL(window.location.href);
+      const redirectBack = currentUrl.searchParams.get('redirect_uri');
+      const loginUrl = new URL('/login', window.location.origin);
+      loginUrl.searchParams.set('next', nextUrl);
+      if (redirectBack) {
+        loginUrl.searchParams.set('redirect_back', redirectBack);
+      }
+      window.location.replace(loginUrl.toString());
       return;
     }
     if (!res.ok) { showError(data?.error || 'Failed to verify request.'); return; }
@@ -156,7 +163,14 @@ async function handleAllow() {
 
     if (!res.ok) {
       if (res.status === 401) {
-        window.location.replace(`/login?next=${encodeURIComponent(window.location.href)}`);
+        const currentUrl = new URL(window.location.href);
+        const redirectBack = currentUrl.searchParams.get('redirect_uri');
+        const loginUrl = new URL('/login', window.location.origin);
+        loginUrl.searchParams.set('next', window.location.href);
+        if (redirectBack) {
+          loginUrl.searchParams.set('redirect_back', redirectBack);
+        }
+        window.location.replace(loginUrl.toString());
         return;
       }
       showStatus(data?.error || 'An error occurred. Please try again.');
