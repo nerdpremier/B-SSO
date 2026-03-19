@@ -508,6 +508,32 @@ async function handleAuthorize(req, res, ip) {
                  code_challenge ? 'S256' : null,
                  expiresAt]
             );
+
+            // ── Link session_jti to pre-login record for OAuth flow ─────────────
+            if (pre_login_log_id) {
+                try {
+                    const cookies = parse(req.headers.cookie || '');
+                    const sessionToken = cookies.session_token;
+                    if (sessionToken) {
+                        const sessionDecoded = jwt.verify(sessionToken, process.env.JWT_SECRET, {
+                            issuer: 'auth-service', audience: 'api'
+                        });
+                        
+                        if (sessionDecoded?.jti) {
+                            await pool.query(
+                                `UPDATE login_risks
+                                 SET session_jti = $1, is_success = TRUE
+                                 WHERE id = $2 AND username = $3`,
+                                [sessionDecoded.jti, pre_login_log_id, decoded.username]
+                            );
+                            console.log(`[INFO] oauth.js: Linked session_jti=${sessionDecoded.jti} to login_risk_id=${pre_login_log_id}`);
+                        }
+                    }
+                } catch (linkErr) {
+                    console.error('[WARN] oauth.js session_jti link failed:', linkErr.message);
+                    // ไม่ block flow แค่ log ไว้
+                }
+            }
         } catch (dbErr) {
             console.error('[ERROR] oauth.js handleAuthorize insert code:', dbErr.message);
             return res.status(500).json({ error: 'Internal server error' });
