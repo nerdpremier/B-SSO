@@ -169,7 +169,19 @@ async function preLoginCheck() {
     // [FIX] restore next/redirect_back ที่ save ไว้ตอน register (กรณี verified=1 params หาย)
     const pendingRedirect = sp.get('verified') ? sessionStorage.getItem('post_verify_redirect') : null;
     if (pendingRedirect) sessionStorage.removeItem('post_verify_redirect');
-    const nextUrl       = sp.get('next')          || (pendingRedirect?.startsWith('/') ? pendingRedirect : null) || null;
+    
+    // [FIX-DOUBLE-ENCODE] decode nextUrl ที่ถูก encode ซ้ำ
+    let nextUrl = sp.get('next');
+    if (nextUrl) {
+        try {
+            // decode 2 รอบเพื่อจัดการ double encoding
+            nextUrl = decodeURIComponent(decodeURIComponent(nextUrl));
+        } catch {
+            // ถ้า decode ล้มเหลว ใช้ค่าเดิม
+        }
+    }
+    
+    nextUrl = nextUrl || (pendingRedirect?.startsWith('/') ? pendingRedirect : null) || null;
     const redirect_back = sp.get('redirect_back') || (pendingRedirect && !pendingRedirect.startsWith('/') ? pendingRedirect : null) || null;
 
     if (!username||!password) return updateStatus('danger','Please enter your username and password.');
