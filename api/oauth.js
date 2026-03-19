@@ -679,7 +679,7 @@ async function handleToken(req, res, ip) {
 
             // ── Link/Create pre-login record for OAuth token session ─────
             // Find pre-login record that was created during authorize flow
-            let preLoginScore = 0.1; // default low risk for OAuth flows
+            let preLoginScore = 0.3; // default low risk for OAuth flows
             let preLoginLogId = null;
             
             try {

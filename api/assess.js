@@ -211,7 +211,7 @@ export default async function handler(req, res) {
             if (currentAttempt > 3)  score += 0.3;
             if (currentAttempt >= 5) score  = 1.0;
 
-            const level = score >= 0.7 ? 'HIGH' : (score >= 0.4 ? 'MEDIUM' : 'LOW');
+            const level = score >= 1.0 ? 'HIGH' : (score >= 0.7 ? 'MEDIUM' : 'LOW');
 
             // COMMIT ทุก level รวม HIGH — เพื่อ audit trail และ forensics
             let insertedId;
