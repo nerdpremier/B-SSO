@@ -389,11 +389,56 @@ async function handleAuthorize(req, res, ip) {
             return res.status(401).json({ error: 'unauthenticated', app_name: appName });
         }
 
-        auditLog('OAUTH_CONSENT_VIEW', { username: decoded.username, clientId: client_id, ip });
+        // ── Pre-login Risk Assessment for OAuth Flow ─────────────────
+        // สำหรับ returning users ที่มี session อยู่แล้ว แต่ยังไม่ได้ประเมินความเสี่ยง
+        // สร้าง pre-login score ใหม่สำหรับ OAuth session นี้
+        let preLoginLogId = null;
+        try {
+            // สร้าง device fingerprint จาก request headers
+            const userAgent = req.headers['user-agent'] || '';
+            const acceptLang = req.headers['accept-language'] || '';
+            const device = `oauth:${client_id}:${userAgent.slice(0, 50)}`;
+            const fingerprint = crypto.createHash('sha256')
+                .update(`${client_id}:${userAgent}:${acceptLang}:${ip}`)
+                .digest('hex')
+                .slice(0, 32);
+
+            // เรียก assess.js เพื่อสร้าง pre-login score
+            // ใช้ fetch แบบ internal call พร้อม forwarded headers
+            const assessRes = await fetch(`${process.env.BASE_URL}/api/assess`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Cookie': req.headers.cookie || '',
+                    'X-Forwarded-For': req.headers['x-forwarded-for'] || '',
+                    'User-Agent': req.headers['user-agent'] || ''
+                },
+                body: JSON.stringify({
+                    username: decoded.username,
+                    device,
+                    fingerprint,
+                    next: `/oauth/authorize?client_id=${client_id}` // บอกว่าเป็น OAuth flow
+                })
+            });
+
+            if (assessRes.ok) {
+                const assessData = await assessRes.json();
+                if (assessData.logId) {
+                    preLoginLogId = assessData.logId;
+                    console.log(`[INFO] oauth.js: Created pre-login assessment for ${decoded.username}, logId=${preLoginLogId}`);
+                }
+            }
+        } catch (assessErr) {
+            console.error('[WARN] oauth.js pre-login assessment failed:', assessErr.message);
+            // ไม่ block flow แค่ log ไว้
+        }
+
+        auditLog('OAUTH_CONSENT_VIEW', { username: decoded.username, clientId: client_id, ip, preLoginLogId });
         return res.status(200).json({
             app_name: appName, client_id, redirect_uri, state,
             username: decoded.username,
             scope:    effectiveScope,
+            pre_login_log_id: preLoginLogId, // ส่งไปให้ frontend เก็บไว้
         });
     }
 
@@ -401,7 +446,7 @@ async function handleAuthorize(req, res, ip) {
     if (req.method === 'POST') {
         if (!requireJson(req, res)) return;
         const { client_id, redirect_uri, state, approved,
-                scope, code_challenge, code_challenge_method } = req.body;
+                scope, code_challenge, code_challenge_method, pre_login_log_id } = req.body;
 
         if (!client_id || typeof client_id !== 'string' || client_id.length > 128)
             return res.status(400).json({ error: 'invalid_request: missing or invalid client_id' });
@@ -468,11 +513,15 @@ async function handleAuthorize(req, res, ip) {
             return res.status(500).json({ error: 'Internal server error' });
         }
 
-        auditLog('OAUTH_CODE_ISSUED', { username: decoded.username, clientId: client_id, scope: effectiveScope, ip });
+        auditLog('OAUTH_CODE_ISSUED', { username: decoded.username, clientId: client_id, scope: effectiveScope, ip, preLoginLogId });
 
         const redirectUrl = new URL(redirect_uri);
         redirectUrl.searchParams.set('code', code);
         redirectUrl.searchParams.set('state', state);
+        // ส่ง pre_login_log_id ไปให้ client เพื่อใช้ใน behavior assessment
+        if (pre_login_log_id) {
+            redirectUrl.searchParams.set('pre_login_log_id', pre_login_log_id);
+        }
         return res.status(200).json({ redirect_url: redirectUrl.toString() });
     }
 

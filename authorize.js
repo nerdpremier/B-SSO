@@ -11,6 +11,7 @@
 
 let _oauthParams  = {};
 let _isSubmitting = false;
+let _preLoginLogId = null;
 
 const $id = id => document.getElementById(id);
 
@@ -109,6 +110,12 @@ async function init() {
     _oauthParams.scope = data.scope.join(' ');
   }
 
+  // เก็บ pre_login_log_id จาก server response (ถ้ามี)
+  if (data.pre_login_log_id) {
+    _preLoginLogId = data.pre_login_log_id;
+    console.log(`[INFO] authorize.js: Received pre_login_log_id=${_preLoginLogId}`);
+  }
+
   const appName  = data.app_name || 'Application';
   const username = data.username || '';
   $id('app-badge-name').textContent   = appName;
@@ -152,6 +159,11 @@ async function handleAllow() {
     if (_oauthParams.codeChallenge && _oauthParams.codeChallengeMethod) {
       body.code_challenge        = _oauthParams.codeChallenge;
       body.code_challenge_method = _oauthParams.codeChallengeMethod;
+    }
+
+    // เพิ่ม pre_login_log_id ถ้ามีค่า
+    if (_preLoginLogId) {
+      body.pre_login_log_id = _preLoginLogId;
     }
 
     const res = await fetch('/api/oauth/authorize', {
