@@ -437,48 +437,22 @@ async function handleAuthorize(req, res, ip) {
             return res.status(401).json({ error: 'unauthenticated', app_name: appName });
         }
 
-        // ── Pre-login Risk Assessment for OAuth Flow ─────────────────
-        // สำหรับ returning users ที่มี session อยู่แล้ว แต่ยังไม่ได้ประเมินความเสี่ยง
-        // สร้าง pre-login score ใหม่สำหรับ OAuth session นี้
+        // ── Retrieve Existing Pre-login Risk Assessment ─────────────────
+        // สำหรับ returning users ให้ดึงค่า pre-login score เดิมของ session นี้มาใช้
+        // จะได้มีแค่ค่าเดียวตามที่ผู้ใช้ต้องการ
         let preLoginLogId = null;
         try {
-            // สร้าง device fingerprint จาก request headers
-            const userAgent = req.headers['user-agent'] || '';
-            const acceptLang = req.headers['accept-language'] || '';
-            const device = `oauth:${client_id}:${userAgent.slice(0, 50)}`;
-            const fingerprint = crypto.createHash('sha256')
-                .update(`${client_id}:${userAgent}:${acceptLang}:${ip}`)
-                .digest('hex')
-                .slice(0, 32);
-
-            // เรียก assess.js เพื่อสร้าง pre-login score
-            // ใช้ fetch แบบ internal call พร้อม forwarded headers
-            const assessRes = await fetch(`${process.env.BASE_URL}/api/assess`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Cookie': req.headers.cookie || '',
-                    'X-Forwarded-For': req.headers['x-forwarded-for'] || '',
-                    'User-Agent': req.headers['user-agent'] || ''
-                },
-                body: JSON.stringify({
-                    username: decoded.username,
-                    device,
-                    fingerprint,
-                    next: `/oauth/authorize?client_id=${client_id}` // บอกว่าเป็น OAuth flow
-                })
-            });
-
-            if (assessRes.ok) {
-                const assessData = await assessRes.json();
-                if (assessData.logId) {
-                    preLoginLogId = assessData.logId;
-                    console.log(`[INFO] oauth.js: Created pre-login assessment for ${decoded.username}, logId=${preLoginLogId}`);
-                }
+            const riskRes = await pool.query(
+                `SELECT id FROM login_risks 
+                 WHERE username = $1 AND session_jti = $2 
+                 ORDER BY created_at DESC LIMIT 1`,
+                [decoded.username, decoded.jti]
+            );
+            if (riskRes.rows[0]) {
+                preLoginLogId = riskRes.rows[0].id;
             }
-        } catch (assessErr) {
-            console.error('[WARN] oauth.js pre-login assessment failed:', assessErr.message);
-            // ไม่ block flow แค่ log ไว้
+        } catch (dbErr) {
+            console.error('[WARN] oauth.js fetch existing pre-login risk failed:', dbErr.message);
         }
 
         auditLog('OAUTH_CONSENT_VIEW', { username: decoded.username, clientId: client_id, ip, preLoginLogId });
@@ -731,70 +705,16 @@ async function handleToken(req, res, ip) {
             );
             const accessTokenId = accessResult.rows[0].id;
 
-            // ── Link/Create pre-login record for OAuth token session ─────
-            // Find pre-login record that was created during authorize flow
-            let preLoginScore = 0.3; // default low risk for OAuth flows
+            // ── Extract pre-login record ID for OAuth token session (if passed) ─────
             let preLoginLogId = null;
-            
-            try {
-                // First, try to use pre_login_log_id sent from client (if provided)
-                if (pre_login_log_id) {
-                    const parsedId = Number(pre_login_log_id);
-                    if (Number.isInteger(parsedId) && parsedId > 0) {
-                        const clientPreLoginRes = await tokenClient.query(
-                            `SELECT id, pre_login_score 
-                             FROM login_risks 
-                             WHERE id = $1 AND username = $2
-                               AND created_at > NOW() - INTERVAL '30 minutes'
-                             LIMIT 1`,
-                            [parsedId, codeRow.username]
-                        );
-                        
-                        if (clientPreLoginRes.rows[0]) {
-                            preLoginLogId = clientPreLoginRes.rows[0].id;
-                            preLoginScore = clientPreLoginRes.rows[0].pre_login_score || 0.1;
-                            console.log(`[INFO] oauth.js: Using client pre_login_log_id=${preLoginLogId}, score=${preLoginScore}`);
-                        }
-                    }
+            if (pre_login_log_id) {
+                const parsedId = Number(pre_login_log_id);
+                if (Number.isInteger(parsedId) && parsedId > 0) {
+                    preLoginLogId = parsedId;
+                    // No need to insert a duplicate login_risks row for OAuth anymore.
+                    // The frontend behavior collector will use this preLoginLogId to link post-login data 
+                    // directly back to the original SSO web session's login_risks row.
                 }
-                
-                // If no client pre_login_log_id or not found, try to find existing record
-                if (!preLoginLogId) {
-                    const preLoginRes = await tokenClient.query(
-                        `SELECT id, pre_login_score 
-                         FROM login_risks 
-                         WHERE username = $1 AND is_success = TRUE 
-                           AND created_at > NOW() - INTERVAL '30 minutes'
-                         ORDER BY created_at DESC 
-                         LIMIT 1`,
-                        [codeRow.username]
-                    );
-                    
-                    if (preLoginRes.rows[0]) {
-                        preLoginLogId = preLoginRes.rows[0].id;
-                        preLoginScore = preLoginRes.rows[0].pre_login_score || 0.1;
-                    }
-                }
-                
-                // Create pre-login record for OAuth token
-                await tokenClient.query(
-                    `INSERT INTO login_risks 
-                     (username, device, fingerprint, risk_level, pre_login_score, session_jti, is_success)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-                    [
-                        codeRow.username,
-                        `oauth_token:${accessTokenId}`,
-                        `oauth:${client_id}:${accessTokenId}`,
-                        'LOW', // OAuth token flows are considered LOW risk
-                        preLoginScore,
-                        `oauth:${accessTokenId}`,
-                        true
-                    ]
-                );
-                console.log(`[INFO] oauth.js: Created pre-login record for OAuth token ${accessTokenId}, score=${preLoginScore}`);
-            } catch (preLoginErr) {
-                console.error('[WARN] oauth.js pre-login record creation failed:', preLoginErr.message);
-                // Don't fail the OAuth flow, just log the error
             }
 
             // ── Refresh Token ──────────────────────────────────
