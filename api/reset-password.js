@@ -15,6 +15,15 @@ import {
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 
+/**
+ * API Handler สำหรับดำเนินการตั้งค่ารหัสผ่านใหม่ (Reset Password)
+ * ทำหน้าที่รับค่า Token ที่ส่งมาในลิงก์อีเมลของผู้ใช้และรหัสผ่านใหม่ 
+ * ตรวจสอบความถูกต้องและอัปเดตรหัสผ่านใหม่ลงในฐานข้อมูล
+ * พร้อมทั้งยกเลิก Session เก่าทั้งหมดของผู้ใช้
+ * @param {import('http').IncomingMessage} req - HTTP Request object
+ * @param {import('http').ServerResponse} res - HTTP Response object
+ * @returns {Promise<void>}
+ */
 export default async function handler(req, res) {
     if (req.method !== 'POST') return res.status(405).send();
 

@@ -39,6 +39,13 @@ import crypto      from 'crypto';
 
 const OTP_REGEX = /^\d{6}$/;
 
+/**
+ * ฟังก์ชันสำหรับเปรียบเทียบค่า Hash แบบ Timing-Safe
+ * ใช้ป้องกันการโจมตีแบบ Timing Attack โดยใช้เวลากรณีจริงกับค่าหลอกเท่ากันเสมอ
+ * @param {string} storedHash - ค่า hash ที่เก็บไว้ในฐานข้อมูล
+ * @param {string} inputHash - ค่า hash ที่ได้จากการคำนวณข้อมูลที่ผู้ใช้ส่งมา
+ * @returns {boolean} เป็นจริงหากค่า hash ตรงกัน
+ */
 function timingSafeHashEqual(storedHash, inputHash) {
     if (!storedHash || !inputHash) return false;
     if (storedHash.length !== inputHash.length) return false;
@@ -52,6 +59,14 @@ function timingSafeHashEqual(storedHash, inputHash) {
     }
 }
 
+/**
+ * API Handler หลักสำหรับ Multi-Factor Authentication (MFA)
+ * ทำหน้าที่สลับ (Route) คำขอไปยังฟังก์ชันเป้าหมายตามค่า Action ที่ส่งมา
+ * รองรับ Action: 'verify' (ตรวจสอบรหัส) และ 'resend' (ส่งรหัสใหม่)
+ * @param {import('http').IncomingMessage} req - HTTP Request object
+ * @param {import('http').ServerResponse} res - HTTP Response object
+ * @returns {Promise<void>}
+ */
 export default async function handler(req, res) {
     if (req.method !== 'POST') return res.status(405).send();
 
@@ -79,6 +94,14 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Invalid action. Use action: "verify" or "resend"' });
 }
 
+/**
+ * ฟังก์ชันสำหรับตรวจสอบรหัส MFA (OTP)
+ * ทำหน้าที่ยืนยันรหัสผ่านชั้นที่ 2 เทียบกับที่ส่งให้ผู้ใช้ผ่านอีเมล และจับผิดหากพยายามเดารหัส
+ * @param {import('http').IncomingMessage} req - HTTP Request object
+ * @param {import('http').ServerResponse} res - HTTP Response object
+ * @param {string} ip - IP Address ของผู้ใช้
+ * @returns {Promise<void>}
+ */
 async function handleVerifyMfa(req, res, ip) {
     await ensureLoginRisksSchema();
     try {
@@ -264,6 +287,14 @@ async function handleVerifyMfa(req, res, ip) {
     }
 }
 
+/**
+ * ฟังก์ชันสำหรับส่งรหัส MFA ใหม่ (Resend OTP)
+ * ตรวจสอบโควตาการส่งซ้ำ, ควบคุมการส่งเร็วเกินไป (Cooldown) และสร้างรหัสใหม่ส่งผ่านอีเมล
+ * @param {import('http').IncomingMessage} req - HTTP Request object
+ * @param {import('http').ServerResponse} res - HTTP Response object
+ * @param {string} ip - IP Address ของผู้ใช้
+ * @returns {Promise<void>}
+ */
 async function handleResendMfa(req, res, ip) {
     try {
         if (await checkRateLimit(`ip:${ip}:resend-mfa`, 20, 60_000)) {
@@ -362,7 +393,7 @@ async function handleResendMfa(req, res, ip) {
                 await mailTransporter.sendMail({
                     from:    `"Security System" <${process.env.EMAIL_USER}>`,
                     to:      email,
-                    subject: '🔒 Your new verification code (MFA)',
+                    subject: ' Your new verification code (MFA)',
                     html:    `<h2>Your new code is: <b style="color:blue;">${mfaCode}</b></h2><p>This code expires in 5 minutes.</p>`
                 });
                 emailSent = true;

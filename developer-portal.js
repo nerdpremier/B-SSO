@@ -7,6 +7,10 @@ let pendingDeleteName = null;
 let pendingRotateId   = null;
 let pendingRotateName = null;
 
+/**
+ * เข้าสู่ระบบหน้า Portal
+ * ตรวจสอบความถูกต้องของ Session ก่อนโหลดหน้าข้อมูลแอปพลิเคชัน
+ */
 async function init() {
   let res;
   try { res = await fetch('/api/session', { credentials: 'include' }); }
@@ -20,6 +24,9 @@ async function init() {
   loadApps();
 }
 
+/**
+ * โหลดรายชื่อแอปพลิเคชันของนักพัฒนา (Client Applications) จากฐานข้อมูล
+ */
 async function loadApps() {
   const list  = document.getElementById('apps-list');
   const count = document.getElementById('apps-count');
@@ -32,7 +39,7 @@ async function loadApps() {
     if (apps.length === 0) {
       list.innerHTML = `
         <div class="apps-empty">
-          <div class="apps-empty-icon">🔌</div>
+          <div class="apps-empty-icon"></div>
           <div class="apps-empty-title">No apps yet</div>
           <div class="apps-empty-sub">Fill in the form above to create your first app.</div>
         </div>`;
@@ -47,7 +54,7 @@ async function loadApps() {
           <div class="app-date">Created ${formatDate(app.created_at)}</div>
         </div>
         <div class="app-card-actions">
-          <button class="btn-rotate" type="button" data-action="rotate" data-client-id="${esc(app.client_id)}" data-app-name="${esc(app.name)}">🔄 Rotate Secret</button>
+          <button class="btn-rotate" type="button" data-action="rotate" data-client-id="${esc(app.client_id)}" data-app-name="${esc(app.name)}"> Rotate Secret</button>
           <button class="btn-delete" type="button" data-action="delete" data-client-id="${esc(app.client_id)}" data-app-name="${esc(app.name)}">Delete</button>
         </div>
       </div>`).join('');
@@ -59,6 +66,9 @@ async function loadApps() {
   }
 }
 
+/**
+ * จัดการสร้างแอปพลิเคชัน (Client) ใหม่อิงจากฟอร์มที่กรอกในหน้าเว็บ
+ */
 async function createApp() {
   const name      = document.getElementById('input-name').value.trim();
   const uri       = document.getElementById('input-uri').value.trim();
@@ -104,7 +114,7 @@ async function createApp() {
   finally { btn.disabled = false; btn.textContent = 'Create App'; }
 }
 
-// FIX: className was 'create-error' (no CSS rule). Now uses 'danger' to match CSS.
+// className was 'create-error' (no CSS rule). Now uses 'danger' to match CSS.
 function showCreateError(msg) {
   const el = document.getElementById('create-status');
   el.textContent = msg;

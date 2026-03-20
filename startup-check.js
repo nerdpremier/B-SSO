@@ -36,10 +36,10 @@ const REQUIRED_ENV = [
     'EMAIL_PASS',
     'BASE_URL',
     'DATABASE_URL',
-    // [FIX] เพิ่ม CRON_SECRET: cleanup.js ใช้ใน Authorization header check
+    // เพิ่ม CRON_SECRET: cleanup.js ใช้ใน Authorization header check
     //   เดิม: ไม่ตรวจ → cleanup endpoint ไม่มี auth → ใครก็เรียก trigger cleanup ได้
     'CRON_SECRET',
-    // [FIX] เพิ่ม OAUTH_SECRET_PEPPER: oauth.js ใช้ hash client secret
+    // เพิ่ม OAUTH_SECRET_PEPPER: oauth.js ใช้ hash client secret
     //   เดิม: ไม่ตรวจ → oauth.js fallback ไปใช้ JWT_SECRET
     //   ปัญหา: JWT_SECRET shared กับ signing token → semantic ผิด
     //          ถ้า JWT_SECRET รั่ว → client secrets ทุกตัวถูก compute ใหม่ได้ทันที

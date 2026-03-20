@@ -44,8 +44,12 @@ const DEFAULT_SCOPE = ['profile'];
 
 // ─── Shared Utilities ─────────────────────────────────────────
 
-// parseScope: แปลง scope string → validated array
-// ตัด scope ที่ไม่อยู่ใน VALID_SCOPES ออก, default เป็น ['profile']
+/**
+ * แปลงฟิลด์ Scope จากข้อความ (String) เป็น Array โดยกรองข้อมูลที่ไม่ถูกต้องออก
+ * @param {string} scopeStr - ข้อมูล Scope ในรูปแบบข้อความที่คั่นด้วยช่องว่าง
+ * @param {Array<string>} [allowedScopes=[...VALID_SCOPES]] - รายการ Scope ที่อนุญาตให้ระบุ
+ * @returns {Array<string>} รายการ Scope ที่ตรวจสอบแล้ว หากไม่ระบุคืนเป็นค่ามาตรฐาน (profile)
+ */
 function parseScope(scopeStr, allowedScopes = [...VALID_SCOPES]) {
     if (!scopeStr || typeof scopeStr !== 'string') return DEFAULT_SCOPE;
     const requested = scopeStr.trim().split(/\s+/).filter(s => VALID_SCOPES.has(s));
@@ -53,14 +57,22 @@ function parseScope(scopeStr, allowedScopes = [...VALID_SCOPES]) {
     return allowed.length > 0 ? allowed : DEFAULT_SCOPE;
 }
 
-// hashToken: SHA-256 สำหรับ high-entropy random token
-// ไม่ต้องการ salt เพราะ 256-bit random input ทำ preimage attack ไม่คุ้มค่า
+/**
+ * คำนวณค่า Hash ด้วยอัลกอริทึม SHA-256 สำหรับใช้เก็บข้อมูลแบบ High-entropy (Token สุ่ม) ลงในฐานข้อมูล
+ * ไม่ต้องใช้ Salt เพราะเป็น 256-bit random input อยู่แล้ว ยากต่อการโจมตีแบบ Preimage
+ * @param {string} token - ข้อมูล Token ดิบที่ต้องการ Hash
+ * @returns {string} ค่า Hash ในรูปแบบเลขฐานสิบหก (Hex String)
+ */
 function hashToken(token) {
     return crypto.createHash('sha256').update(token).digest('hex');
 }
 
-// hashClientSecret: HMAC-SHA256 ด้วย pepper
-// เหมาะกว่า bcrypt สำหรับ high-entropy random string (256-bit)
+/**
+ * คำนวณ Hash ด้วย HMAC-SHA256 พร้อมการใส่ Pepper ที่ระบบตั้งค่าไว้สำหรับปกป้อง Secret ของ Client
+ * ปลอดภัยและเหมาะกับข้อมูลแบบ High-entropy Random String หรือข้อมูลสุ่ม 256-bit ใน Client Secret
+ * @param {string} secret - ข้อมูลความลับของแอป (Client Secret)
+ * @returns {string} ค่า Hash ในรูปแบบเลขฐานสิบหก 
+ */
 function hashClientSecret(secret) {
     return crypto
         .createHmac('sha256', process.env.OAUTH_SECRET_PEPPER)
@@ -68,7 +80,12 @@ function hashClientSecret(secret) {
         .digest('hex');
 }
 
-// safeHexEqual: timing-safe string comparison ป้องกัน timing attack
+/**
+ * ฟังก์ชันสำหรับเปรียบเทียบข้อความแบบปลอดภัยต่อ Timing Attack
+ * @param {string} a - ข้อความรูปแบบ Hex String ลำดับที่ 1
+ * @param {string} b - ข้อความรูปแบบ Hex String ลำดับที่ 2
+ * @returns {boolean} เป็นจริงหากข้อความตรงกัน
+ */
 function safeHexEqual(a, b) {
     if (a.length !== b.length) return false;
     try {
@@ -78,9 +95,13 @@ function safeHexEqual(a, b) {
     }
 }
 
-// verifyBearerSession: ตรวจ JWT จาก Authorization: Bearer header
-// ใช้เฉพาะ /clients endpoint (developer API)
-// คืน decoded payload ถ้า valid, null ถ้าไม่ valid
+/**
+ * ตรวจสอบความถูกต้องและวันหมดอายุของ Bearer Session 
+ * โดยอ่าน Authorization header จาก Request ที่เข้ามา
+ * สำหรับใช้งานบนหน้าจัดการ (Developers Portal API)
+ * @param {import('http').IncomingMessage} req - HTTP Request object
+ * @returns {Object|null} Payload ข้อมูลของ Token หากถูกต้อง ไม่เช่นนั้นคืน null
+ */
 function verifyBearerSession(req) {
     const auth = req.headers.authorization;
     if (!auth?.startsWith('Bearer ')) return null;
@@ -98,9 +119,13 @@ function verifyBearerSession(req) {
     }
 }
 
-// verifySessionCookie: ตรวจ JWT จาก session cookie + DB revocation check
-// ใช้เฉพาะ /authorize endpoint (consent flow)
-// คืน decoded payload ถ้า valid active session, null ถ้าไม่ valid
+/**
+ * ทวนสอบความถูกต้องและสถานะของ JWT Session ผ่านทาง Cookie
+ * รับหน้าที่ดึง Session Token จากคุกกี้และเช็คกับฐานข้อมูลผู้ถูกเลิกใช้งาน (Revocation Check)
+ * ปกติใช้งานใน API Authorization Flow ที่มีการ Redirect ผ่านหน้าเว็บ
+ * @param {import('http').IncomingMessage} req - HTTP Request object
+ * @returns {Promise<Object|null>} Payload ข้อมูลของ Token หากถูกต้อง ไม่เช่นนั้นคืน null
+ */
 async function verifySessionCookie(req) {
     const cookies = parse(req.headers.cookie || '');
     const token   = cookies.session_token;
@@ -140,6 +165,11 @@ async function verifySessionCookie(req) {
     return decoded;
 }
 
+/**
+ * ตั้งค่า HTTP Security Headers ใน Response เพื่อความปลอดภัยของข้อมูล
+ * @param {import('http').ServerResponse} res - HTTP Response object
+ * @param {string} [framePolicy='DENY'] - การปรับค่า X-Frame-Options
+ */
 function setSecurityHeaders(res, framePolicy = 'DENY') {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', framePolicy);
@@ -149,6 +179,13 @@ function setSecurityHeaders(res, framePolicy = 'DENY') {
     res.setHeader('Pragma', 'no-cache');
 }
 
+/**
+ * ตรวจสอบว่า HTTP Request ที่ส่งเข้ามาเป็นข้อมูลรูปแบบ JSON ใช่หรือไม่
+ * หากไม่ใช่จะตั้งค่ารหัสข้อผิดพลาดลงใน Response ทันที
+ * @param {import('http').IncomingMessage} req - HTTP Request object
+ * @param {import('http').ServerResponse} res - HTTP Response object
+ * @returns {boolean} ผลการตรวจสถานะความถูกต้องของ JSON Content
+ */
 function requireJson(req, res) {
     if (!req.headers['content-type']?.includes('application/json')) {
         res.status(415).json({ error: 'Content-Type must be application/json' });
@@ -163,10 +200,15 @@ function requireJson(req, res) {
 
 // ─── Sub-handlers ─────────────────────────────────────────────
 
-// ── /api/oauth/clients ────────────────────────────────────────
-// Developer Portal API: ลงทะเบียน / ดู / ลบ client app
-// Auth: session_token cookie (same-origin จาก developer-portal.html)
-// ใช้ cookie แทน Bearer เพราะ httpOnly cookie อ่านจาก JS ไม่ได้
+/**
+ * API Handler สำหรับหน้าจัดการนักพัฒนา (Developer Portal) 
+ * รองรับการลงทะเบียน (POST), ตรวจสอบ (GET), หมุนเวียนคีย์ (PATCH) และลบ (DELETE) แอปพลิเคชัน
+ * จัดการสิทธิ์การเข้าถึงผ่าน Session Cookie ที่ดึงมาจากหน้า Portal (Same-origin)
+ * @param {import('http').IncomingMessage} req - HTTP Request object
+ * @param {import('http').ServerResponse} res - HTTP Response object
+ * @param {string} ip - IP Address ของผู้ใช้
+ * @returns {Promise<void>} 
+ */
 async function handleClients(req, res, ip) {
     try {
         if (await checkRateLimit(`ip:${ip}:oauth-clients`, 20, 60_000)) {
@@ -240,7 +282,7 @@ async function handleClients(req, res, ip) {
                 name:           name.trim(),
                 redirect_uris,
                 allowed_scopes: allowedScopes,
-                notice:         '⚠️ Save your client_secret now — it cannot be retrieved again'
+                notice:         ' Save your client_secret now — it cannot be retrieved again'
             });
         }
 
@@ -292,7 +334,7 @@ async function handleClients(req, res, ip) {
                 return res.status(200).json({
                     client_id,
                     client_secret: newSecret,
-                    notice:        '⚠️ New secret issued — all previous tokens have been revoked'
+                    notice:        ' New secret issued — all previous tokens have been revoked'
                 });
             } catch (err) {
                 try { await rotateClient.query('ROLLBACK'); } catch { /* ignore */ }
@@ -327,9 +369,15 @@ async function handleClients(req, res, ip) {
     }
 }
 
-// ── /api/oauth/authorize ──────────────────────────────────────
-// Consent flow: GET แสดงข้อมูล app, POST รับผลการตัดสินใจ
-// Auth: session_token cookie
+/**
+ * API Handler สำหรับกระบวนการขออนุญาต (Consent Flow)
+ * รองรับการส่งหน้าข้อมูลแอปเพื่อขออนุญาต (GET) และรับผลการอนุญาตเพื่อออก Auth Code (POST)
+ * มีการจัดการรอบด้าน ความปลอดภัย, สิทธิ์และการป้องกันผู้ใช้
+ * @param {import('http').IncomingMessage} req - HTTP Request object
+ * @param {import('http').ServerResponse} res - HTTP Response object
+ * @param {string} ip - IP Address ของผู้ใช้
+ * @returns {Promise<void>} 
+ */
 async function handleAuthorize(req, res, ip) {
     try {
         if (await checkRateLimit(`ip:${ip}:oauth-authorize`, 30, 60_000)) {
@@ -554,9 +602,15 @@ async function handleAuthorize(req, res, ip) {
     return res.status(405).json({ error: 'Method not allowed' });
 }
 
-// ── /api/oauth/token ──────────────────────────────────────────
-// แลก authorization_code → access_token + refresh_token (server-to-server)
-// หรือ refresh_token → access_token ใหม่ (token rotation)
+/**
+ * API Handler สำหรับแลกเปลี่ยนและต่ออายุเหรียญ (Token Endpoint)
+ * - แลกรับ Authorization Code ให้เป็น Access Token และ Refresh Token (Server-to-Server)
+ * - แลก Refresh Token ให้เป็น Access Token หมุนเวียนชุดใหม่เพื่อความปลอดภัย
+ * @param {import('http').IncomingMessage} req - HTTP Request object
+ * @param {import('http').ServerResponse} res - HTTP Response object
+ * @param {string} ip - IP Address ของผู้ใช้
+ * @returns {Promise<void>} 
+ */
 async function handleToken(req, res, ip) {
     if (req.method !== 'POST') return res.status(405).send();
 
@@ -897,8 +951,14 @@ async function handleToken(req, res, ip) {
     }
 }
 
-// ── /api/oauth/userinfo ───────────────────────────────────────
-// คืนข้อมูล user เมื่อ external app มี valid access_token
+/**
+ * API Handler สำหรับส่งคืนข้อมูลผู้ใช้งาน (Userinfo Endpoint)
+ * เมื่อแอปภายนอกส่ง Access Token เข้ามา จะสกัดและคืนข้อมูลที่สัมพันธ์กับ Scope ของ Token
+ * @param {import('http').IncomingMessage} req - HTTP Request object
+ * @param {import('http').ServerResponse} res - HTTP Response object
+ * @param {string} ip - IP Address ของผู้ใช้
+ * @returns {Promise<void>} 
+ */
 async function handleUserinfo(req, res, ip) {
     if (req.method !== 'GET') return res.status(405).send();
 
@@ -977,20 +1037,19 @@ async function handleUserinfo(req, res, ip) {
     }
 }
 
-// ── /api/oauth/sso-exchange ───────────────────────────────────
-// แลก one-time sso_token → user info (สำหรับ redirect-back SSO flow)
-//
-// Flow:
-//   1. User login สำเร็จใน CARS SSO
-//   2. auth.js / verify-mfa.js INSERT sso_token → redirect ?sso_token=xxx
-//   3. Third-party app GET /api/oauth/sso-exchange?token=xxx
-//   4. ตรวจ token → mark used → คืน user info
-//
-// Security:
-//   - Token single-use (used=TRUE หลังแลก)
-//   - TTL 5 นาที
-//   - Rate limited per IP
-//   - ไม่ต้องการ client_secret (เพราะใช้เฉพาะ redirect flow ที่ origin มาจาก SSO เอง)
+/**
+ * API Handler สำหรับการแลกเปลี่ยน SSO Token เป็นข้อมูลผู้ใช้
+ * ใช้ในกรณี Redirect-back Flow ที่ผู้ใช้ล็อกอินสำเร็จและระบบของ CARS ออก SSO Token ให้ 
+ * 
+ * * คุณสมบัติด้านความปลอดภัย: *
+ * - Token ใช้งานได้เพียงครั้งเดียวเท่านั้น (Single-use)
+ * - มีอายุการใช้งานสั้น (TTL)
+ * - ไม่ต้องการ Client Secret เพราะแอปปลายทางถูกบังคับตั้งแต่แรกและ Flow เกิดที่ SSO
+ * @param {import('http').IncomingMessage} req - HTTP Request object
+ * @param {import('http').ServerResponse} res - HTTP Response object
+ * @param {string} ip - IP Address ของผู้ใช้
+ * @returns {Promise<void>} 
+ */
 async function handleSsoExchange(req, res, ip) {
     if (req.method !== 'GET') return res.status(405).send();
 
@@ -1070,8 +1129,14 @@ async function handleSsoExchange(req, res, ip) {
     }
 }
 
-// ── /api/oauth/revoke ─────────────────────────────────────────
-// ยกเลิก access_token ก่อน expire (ตาม RFC 7009)
+/**
+ * API Handler สำหรับระงับสิทธิ์การใช้งานของ Token ตามมาตรฐาน (RFC 7009)
+ * ทำหน้าที่เพิกถอน Token ก่อนที่อายุจะหมดลง ป้องกันการนำไปใช้ต่อโดยไม่ชอบ
+ * @param {import('http').IncomingMessage} req - HTTP Request object
+ * @param {import('http').ServerResponse} res - HTTP Response object
+ * @param {string} ip - IP Address ของผู้ใช้
+ * @returns {Promise<void>} 
+ */
 async function handleRevoke(req, res, ip) {
     if (req.method !== 'POST') return res.status(405).send();
 
@@ -1120,10 +1185,14 @@ async function handleRevoke(req, res, ip) {
     }
 }
 
-// ─── Main Router ───────────────────────────────────────────────
-// ตรวจ URL path แล้ว dispatch ไปยัง sub-handler ที่ถูกต้อง
-// req.url format บน Vercel: "/api/oauth/token?foo=bar"
-// ดึง sub-path ด้วย regex เพื่อไม่ต้องพึ่ง URL parsing library
+/**
+ * API Handler หลักสำหรับระบบ OAuth 2.0 (Main Router)
+ * ทำหน้าที่คัดกรอง Path จาก Endpoint ย่อยและส่งกระจายงาน (Dispatch) ให้กับฟังก์ชันเหล่านั้น
+ * ควบรวม Endpoint หลายตัวไว้ในที่เดียวเพื่อประหยัดจำนวนของ Serverless Function ของ Vercel
+ * @param {import('http').IncomingMessage} req - HTTP Request object
+ * @param {import('http').ServerResponse} res - HTTP Response object
+ * @returns {Promise<void>} 
+ */
 export default async function handler(req, res) {
     setSecurityHeaders(res, 'SAMEORIGIN');
 

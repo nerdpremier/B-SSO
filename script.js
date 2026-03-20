@@ -124,7 +124,10 @@ function checkPasswordStrength(password) {
     });
 }
 
-// จัดการการลงทะเบียนบัญชีผู้ใช้ใหม่
+/**
+ * จัดการการลงทะเบียนผู้ใช้ใหม่สู่ระบบ SSO
+ * หากตั้งค่าเปิดตรวจสอบอีเมล ระบบจะส่งลิ้งค์เพื่อยืนยันอีเมลก่อนเข้าสู่ระบบ
+ */
 async function handleRegister() {
     const username = document.getElementById('username')?.value.trim();
     const email    = document.getElementById('email')?.value.trim();
@@ -134,7 +137,7 @@ async function handleRegister() {
     const ee = validateEmail(email);              if (ee) return updateStatus('danger',ee);
     updateStatus('loading','Creating your account…');
     
-    // [FIX-OAUTH-FLOW] เก็บ OAuth params ไว้ก่อน register
+    // เก็บ OAuth params ไว้ก่อน register
     const sp = new URLSearchParams(window.location.search);
     let nextUrl = sp.get('next');
     let redirectBack = sp.get('redirect_back');
@@ -160,13 +163,13 @@ async function handleRegister() {
                 updateStatus('success','Account created! Check your email to verify before signing in.');
                 const form = document.getElementById('register-form');
                 if (form) form.hidden = true;
-                // [FIX] บันทึก next/redirect_back ไว้ใน sessionStorage
+                // บันทึก next/redirect_back ไว้ใน sessionStorage
                 // เมื่อ user verify email แล้วกลับมา login ใหม่ params จะยังอยู่
                 const pendingNext = nextUrl || redirectBack;
                 if (pendingNext) sessionStorage.setItem('post_verify_redirect', pendingNext);
             } else {
                 updateStatus('success','Account created! Redirecting…');
-                // [FIX-OAUTH-FLOW] redirect ไป login พร้อม OAuth params
+                // redirect ไป login พร้อม OAuth params
                 const loginUrl = new URL('/login', window.location.origin);
                 if (nextUrl) loginUrl.searchParams.set('next', nextUrl);
                 if (redirectBack) loginUrl.searchParams.set('redirect_back', redirectBack);
@@ -181,21 +184,24 @@ async function handleRegister() {
     }
 }
 
-// จัดการกระบวนการล็อกอินเข้าสู่ระบบ
+/**
+ * จัดการกระบวนการตรวจสอบล็อกอินเข้าสู่ระบบ (Pre-Login Verify)
+ * ประเมินความเสี่ยงและส่งคำร้องขอ Login เข้าเซิร์ฟเวอร์
+ */
 async function preLoginCheck() {
     const username = document.getElementById('username')?.value.trim();
     const password = document.getElementById('password')?.value;
     const remember = document.getElementById('remember-device')?.checked;
     const sp = new URLSearchParams(window.location.search);
 
-    // [FIX-REDIRECT] แยก 2 ประเภทออกจากกัน:
+    // แยก 2 ประเภทออกจากกัน:
     //   nextUrl       = same-origin URL เช่น /oauth/authorize?... (redirect หลัง login ฝั่ง frontend)
     //   redirect_back = registered third-party callback URL (สำหรับ SSO token creation ใน auth API)
-    // [FIX] restore next/redirect_back ที่ save ไว้ตอน register (กรณี verified=1 params หาย)
+    // restore next/redirect_back ที่ save ไว้ตอน register (กรณี verified=1 params หาย)
     const pendingRedirect = sp.get('verified') ? sessionStorage.getItem('post_verify_redirect') : null;
     if (pendingRedirect) sessionStorage.removeItem('post_verify_redirect');
     
-    // [FIX-DOUBLE-ENCODE] decode nextUrl ที่ถูก encode ซ้ำ
+    // decode nextUrl ที่ถูก encode ซ้ำ
     let nextUrl = sp.get('next');
     
     if (nextUrl) {
@@ -215,7 +221,7 @@ async function preLoginCheck() {
             }
             nextUrl = decoded;
             
-            // [FIX-OAUTH-FLOW] ตรวจสอบว่าเป็น OAuth authorize URL หรือไม่
+            // ตรวจสอบว่าเป็น OAuth authorize URL หรือไม่
             try {
                 const parsedNext = new URL(nextUrl, window.location.origin);
                         if (parsedNext.pathname === '/oauth/authorize') {
@@ -253,7 +259,7 @@ async function preLoginCheck() {
                 body:JSON.stringify({
                     username,device,fingerprint,
                     reuse_log_id: storedLogId,
-                    next: nextUrl // [FIX-OAUTH-FLOW] ส่ง next เพื่อ detect OAuth
+                    next: nextUrl // ส่ง next เพื่อ detect OAuth
                 })
             });
             // Clear stored credentials after use
@@ -265,7 +271,7 @@ async function preLoginCheck() {
                 method:'POST',
                 body:JSON.stringify({
                     username,device,fingerprint,
-                    next: nextUrl // [FIX-OAUTH-FLOW] ส่ง next เพื่อ detect OAuth
+                    next: nextUrl // ส่ง next เพื่อ detect OAuth
                 })
             });
         }
@@ -278,8 +284,8 @@ async function preLoginCheck() {
         if (!Number.isInteger(logIdNum)||logIdNum<=0) return updateStatus('danger','Incorrect username or password.');
         const safeLogId = String(logIdNum);
 
-        // [FIX-REDIRECT] ส่งเฉพาะ redirect_back (third-party SSO) ไปยัง auth API
-        // [FIX-OAUTH-FLOW] ต้องส่ง nextUrl ด้วยเพื่อให้ auth.js ตรวจจับ OAuth flow
+        // ส่งเฉพาะ redirect_back (third-party SSO) ไปยัง auth API
+        // ต้องส่ง nextUrl ด้วยเพื่อให้ auth.js ตรวจจับ OAuth flow
         const authBody = {action:'login',username,password,fingerprint,logId:safeLogId,remember};
         if (redirect_back) authBody.redirect_back = redirect_back;
         if (nextUrl) authBody.next = nextUrl; // ส่ง nextUrl เพื่อ OAuth flow detection
@@ -302,14 +308,14 @@ async function preLoginCheck() {
                 sessionStorage.setItem('mfa_username',username);
                 sessionStorage.setItem('mfa_remember',String(remember));
                 sessionStorage.setItem('mfa_fingerprint',fingerprint);
-                // [FIX-REDIRECT] บันทึกทั้งสอง URL ใน sessionStorage สำหรับ MFA path
+                // บันทึกทั้งสอง URL ใน sessionStorage สำหรับ MFA path
                 if (redirect_back) sessionStorage.setItem('mfa_redirect_back', redirect_back);
                 if (nextUrl)       sessionStorage.setItem('mfa_next_url', nextUrl);
                 setTimeout(()=>window.location.href='/mfa',1500);
             } else {
                 updateStatus('success','Signed in successfully. Redirecting…');
-                // [FIX-REDIRECT] ลำดับ priority: SSO redirect → same-origin next → welcome
-                // [FIX-OAUTH-FLOW] ถ้า nextUrl เป็น OAuth authorize → ไปที่ nextUrl ไม่ใช่ welcome
+                // ลำดับ priority: SSO redirect → same-origin next → welcome
+                // ถ้า nextUrl เป็น OAuth authorize → ไปที่ nextUrl ไม่ใช่ welcome
                 let dest = authData.redirectUrl;
                 
                 if (!dest) {
@@ -332,7 +338,9 @@ async function preLoginCheck() {
     }
 }
 
-// จัดการการยืนยันตัวตนแบบ 2 ขั้นตอน (MFA)
+/**
+ * จัดการการส่งโค้ดยืนยันตัวตน (MFA Verification) ไปตรวจสอบที่เซิร์ฟเวอร์
+ */
 async function verifyMFA() {
     const code        = document.getElementById('mfa-code')?.value.trim();
     const logId       = sessionStorage.getItem('mfa_logId');
@@ -340,7 +348,7 @@ async function verifyMFA() {
     const username    = sessionStorage.getItem('mfa_username');
     const fingerprint = sessionStorage.getItem('mfa_fingerprint');
     const redirect_back = sessionStorage.getItem('mfa_redirect_back');
-    // [FIX-REDIRECT] อ่าน mfa_next_url สำหรับ same-origin redirect หลัง MFA
+    // อ่าน mfa_next_url สำหรับ same-origin redirect หลัง MFA
     const nextUrl     = sessionStorage.getItem('mfa_next_url');
 
     if (!code||!logId||!username) return updateStatus('danger','Session data missing. Please sign in again.');
@@ -356,8 +364,8 @@ async function verifyMFA() {
             ['mfa_logId','mfa_username','mfa_remember','mfa_fingerprint',
              'mfa_redirect_back','mfa_next_url'].forEach(k=>sessionStorage.removeItem(k));
             updateStatus('success','Identity verified. Redirecting…');
-            // [FIX-REDIRECT] ลำดับ priority: SSO redirect → same-origin next → welcome
-            // [FIX-OAUTH-FLOW] ถ้า nextUrl เป็น OAuth authorize → ไปที่ nextUrl ไม่ใช่ welcome
+            // ลำดับ priority: SSO redirect → same-origin next → welcome
+            // ถ้า nextUrl เป็น OAuth authorize → ไปที่ nextUrl ไม่ใช่ welcome
             let dest = data.redirectUrl;
             if (!dest) {
                 // ไม่มี SSO redirectUrl → ตรวจสอบว่าเป็น OAuth flow หรือไม่
@@ -428,7 +436,7 @@ async function executePasswordReset() {
     const token=new URLSearchParams(window.location.search).get('token');
     if (!token) return updateStatus('danger','Invalid link. Please request a new reset link.');
     
-    // [FIX-OAUTH-FLOW] เก็บ OAuth params ไว้ก่อน reset password
+    // เก็บ OAuth params ไว้ก่อน reset password
     const sp = new URLSearchParams(window.location.search);
     let nextUrl = sp.get('next');
     let redirectBack = sp.get('redirect_back');
@@ -452,7 +460,7 @@ async function executePasswordReset() {
         const data=await res.json();
         if (res.ok) { 
             updateStatus('success','Password updated. Redirecting to sign in…'); 
-            // [FIX-OAUTH-FLOW] redirect ไป login พร้อม OAuth params
+            // redirect ไป login พร้อม OAuth params
             const loginUrl = new URL('/login', window.location.origin);
             if (nextUrl) loginUrl.searchParams.set('next', nextUrl);
             if (redirectBack) loginUrl.searchParams.set('redirect_back', redirectBack);

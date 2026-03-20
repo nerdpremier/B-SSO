@@ -9,6 +9,14 @@ import { checkRateLimit }     from '../lib/rate-limit.js';
 import { getClientIp }        from '../lib/ip-utils.js';
 import { setSecurityHeaders, auditLog } from '../lib/response-utils.js';
 
+/**
+ * API Handler สำหรับออก CSRF Token ให้กับ Client
+ * ทำหน้าที่สร้าง Token แบบสุ่มและส่งกลับไปพร้อมกับการตั้งค่า Cookie
+ * เพื่อให้ Client นำไปใช้งาน ป้องกันการโจมตีแบบ Cross-Site Request Forgery (CSRF)
+ * @param {import('http').IncomingMessage} req - HTTP Request object
+ * @param {import('http').ServerResponse} res - HTTP Response object
+ * @returns {Promise<void>}
+ */
 export default async function handler(req, res) {
     if (req.method !== 'GET') return res.status(405).send();
 

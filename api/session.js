@@ -21,6 +21,14 @@ import {
     USER_REGEX,
 } from '../lib/response-utils.js';
 
+/**
+ * API Handler สำหรับตรวจสอบสถานะ Session ของผู้ใช้
+ * ทำหน้าที่ตรวจสอบความถูกต้องและหมดอายุของ JWT ใน Cookie
+ * ตลอดจนตรวจสอบ Blacklist ว่าผู้ใช้ถูกบังคับออกจากระบบ หรือมีการเปลี่ยนรหัสผ่านหรือไม่
+ * @param {import('http').IncomingMessage} req - HTTP Request object
+ * @param {import('http').ServerResponse} res - HTTP Response object
+ * @returns {Promise<void>}
+ */
 export default async function handler(req, res) {
     if (req.method !== 'GET') return res.status(405).send();
 

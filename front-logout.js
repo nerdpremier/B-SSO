@@ -4,7 +4,7 @@
 
 function safeNext() {
   try {
-    // [FIX-LOGOUT] ตรวจสอบว่ามี URL ที่เก็บไว้ก่อน logout หรือไม่
+    // ตรวจสอบว่ามี URL ที่เก็บไว้ก่อน logout หรือไม่
     const postLogoutRedirect = sessionStorage.getItem('post_logout_redirect');
     if (postLogoutRedirect) {
       sessionStorage.removeItem('post_logout_redirect');

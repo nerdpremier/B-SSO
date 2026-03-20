@@ -25,6 +25,16 @@ import { runCleanup }        from '../lib/cleanup.js';
 import { setSecurityHeaders, auditLog, isJsonContentType } from '../lib/response-utils.js';
 import crypto from 'crypto';
 
+/**
+ * API Handler สำหรับจัดการการออกจากระบบ (Logout) และงานทำความสะอาดข้อมูล (Cron Cleanup)
+ * 
+ * - รองรับ 2 Method ภายในฟังก์ชันเดียวเพื่อลดจำนวน Serverless Functions (Vercel Limit):
+ *   1. GET: สำรองไว้สำหรับ Cron Job เข้ามาทำความสะอาด Token ที่หมดอายุ
+ *   2. POST: สำหรับผู้ใช้กดออกจากระบบ จะทำการตั้งค่า Cookie กลับเป็นหน้าเปล่าและเพิกถอน Token ในฐานข้อมูล
+ * @param {import('http').IncomingMessage} req - HTTP Request object
+ * @param {import('http').ServerResponse} res - HTTP Response object
+ * @returns {Promise<void>}
+ */
 export default async function handler(req, res) {
     setSecurityHeaders(res);
 

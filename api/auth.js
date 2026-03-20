@@ -37,6 +37,15 @@ import crypto      from 'crypto';
 // cost 12 ต้องตรงกับ production hash — ถ้าต่างกัน timing ต่างกัน = timing leak
 const DUMMY_HASH = bcrypt.hashSync('dummy_timing_prevention_fixed_v2', 12);
 
+/**
+ * API Handler หลักสำหรับการจัดการระบบบัญชีผู้ใช้
+ * ครอบคลุมการทำงาน: การลงทะเบียนผู้ใช้ใหม่ (Registration), การเข้าสู่ระบบ (Login), และการยืนยันอีเมล (Email Verification)
+ * รวมถึงการป้องกันการสุ่มเดารหัสผ่าน, การป้องกัน session fixation และจัดการ redirect สำหรับ OAuth Flow 
+ * 
+ * @param {import('http').IncomingMessage} req - HTTP Request object ที่มี body, headers, และข้อมูลการเชื่อมต่อ
+ * @param {import('http').ServerResponse} res - HTTP Response object สำหรับส่งผลการทำงานกลับไปยัง client
+ * @returns {Promise<void>}
+ */
 export default async function handler(req, res) {
     setSecurityHeaders(res);
 
@@ -258,7 +267,7 @@ export default async function handler(req, res) {
                     await mailTransporter.sendMail({
                         from:    `"CARS SSO" <${process.env.EMAIL_USER}>`,
                         to:      emailNormalized,
-                        subject: '✅ Verify your email — CARS SSO',
+                        subject: ' Verify your email — CARS SSO',
                         html:    `<h2>Welcome, ${username}!</h2>
                                   <p>Click the link below to verify your email address:</p>
                                   <p><a href="${verifyLink}">${verifyLink}</a></p>
@@ -415,7 +424,7 @@ export default async function handler(req, res) {
                         await mailTransporter.sendMail({
                             from:    `"Security System" <${process.env.EMAIL_USER}>`,
                             to:      user.email,
-                            subject: '🔒 Your verification code (MFA)',
+                            subject: ' Your verification code (MFA)',
                             html:    `<h2>Your code is: <b style="color:blue;">${mfaCode}</b></h2><p>This code expires in 5 minutes.</p>`
                         });
                         emailSent = true;
@@ -486,10 +495,10 @@ export default async function handler(req, res) {
 
                 await loginClient.query('COMMIT');
 
-                // [BUG-006 FIX] SSO Redirect สำหรับ LOW path
+                // SSO Redirect สำหรับ LOW path
                 let redirectUrl = null;
                 if (redirect_back && user?.id) {
-                    // [FIX-OAUTH-FLOW] ตรวจสอบว่ามี nextUrl ที่เป็น OAuth authorize หรือไม่
+                    // ตรวจสอบว่ามี nextUrl ที่เป็น OAuth authorize หรือไม่
                     // ถ้ามี → เป็น OAuth flow → ไม่ต้องสร้าง SSO token
                     
                     const hasOAuthFlow = req.body.next && 

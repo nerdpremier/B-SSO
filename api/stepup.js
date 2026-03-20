@@ -33,10 +33,21 @@ const STEPUP_TTL_MINUTES = 5;
 const STEPUP_MAX_ATTEMPTS = 5;
 const STEPUP_MAX_SENDS_PER_SESSION = 3;
 
+/**
+ * คำนวณค่า hash ของ Token ด้วยอัลกอริทึม SHA-256
+ * @param {string} token - ข้อมูล Token ที่ต้องการ hash
+ * @returns {string} ค่า hash ในรูปแบบเลขฐานสิบหก (hex string)
+ */
 function hashToken(token) {
     return crypto.createHash('sha256').update(token).digest('hex');
 }
 
+/**
+ * คำนวณค่า hash ของรหัส Step-up (OTP) ด้วย HMAC-SHA256 แบบมี Pepper
+ * @param {string} stepupId - รหัสอ้างอิงของการยืนยันแบบ Step-up
+ * @param {string} code - รหัส OTP ที่ผู้ใช้กรอก
+ * @returns {string} ค่า hash ในรูปแบบเลขฐานสิบหก
+ */
 function hashStepupCode(stepupId, code) {
     const pepper = process.env.MFA_PEPPER;
     return crypto
@@ -45,6 +56,12 @@ function hashStepupCode(stepupId, code) {
         .digest('hex');
 }
 
+/**
+ * ฟังก์ชันสำหรับดึงและตรวจสอบข้อมูลผู้ใช้จาก OAuth Bearer Token
+ * โดยเทียบกับฐานข้อมูลว่า Token ยังไม่หมดอายุหรือไม่ถูกยกเลิก
+ * @param {import('http').IncomingMessage} req - HTTP Request object
+ * @returns {Promise<{username: string, tokenHash: string, sessionJti: string}|null>} ข้อมูลผู้ใช้หาก Token ถูกต้อง, คืน null หากไม่ถูกต้อง
+ */
 async function requireBearerUser(req) {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith?.('Bearer ')) return null;
@@ -65,6 +82,14 @@ async function requireBearerUser(req) {
     return { username: row.username, tokenHash, sessionJti: `oauth:${row.id}` };
 }
 
+/**
+ * API Handler หลักสำหรับการยืนยันตัวตนแบบ Step-up MFA สำหรับ OAuth Bearer
+ * รองรับการส่งรหัสไปยังอีเมล (Action: 'send') และการตรวจรหัสผ่าน (Action: 'verify')
+ * สำหรับใช้ตอนผู้ใช้ทำธุรกรรมสำคัญ (เช่น การโอนเงิน หรือ การแก้ข้อมูลสำคัญ)
+ * @param {import('http').IncomingMessage} req - HTTP Request object
+ * @param {import('http').ServerResponse} res - HTTP Response object
+ * @returns {Promise<void>}
+ */
 export default async function handler(req, res) {
     if (req.method !== 'POST') return res.status(405).send();
     setSecurityHeaders(res);
@@ -145,7 +170,7 @@ export default async function handler(req, res) {
                 await mailTransporter.sendMail({
                     from:    `"CARS SSO" <${process.env.EMAIL_USER}>`,
                     to:      email,
-                    subject: '🛡️ Step-up verification code (CARS)',
+                    subject: ' Step-up verification code (CARS)',
                     html:    `<p>Your verification code is:</p>
                               <h2 style="letter-spacing:2px">${code}</h2>
                               <p>This code expires in 5 minutes.</p>`,

@@ -27,10 +27,23 @@ import {
     isJsonContentType, isValidBody,
 } from '../lib/response-utils.js';
 
+/**
+ * คำนวณค่า hash ของ token ด้วยอัลกอริทึม SHA-256 เพื่อความปลอดภัยในการจัดเก็บและเปรียบเทียบ
+ * @param {string} token - ข้อมูล token ที่ต้องการนำมา hash
+ * @returns {string} ค่า hash ในรูปแบบเลขฐานสิบหก (hex string)
+ */
 function hashToken(token) {
     return crypto.createHash('sha256').update(token).digest('hex');
 }
 
+/**
+ * API Handler หลักสำหรับประเมินความเสี่ยง (Risk Assessment) ของการเข้าสู่ระบบ
+ * ทำการตรวจสอบ request, ยืนยันข้อมูลเบื้องต้น, ประเมินคะแนนความเสี่ยงตามเงื่อนไข
+ * และบันทึกผลลัพธ์ลงฐานข้อมูล
+ * @param {object} req - HTTP Request object
+ * @param {object} res - HTTP Response object
+ * @returns {Promise<void>} 
+ */
 export default async function handler(req, res) {
     if (req.method !== 'POST') return res.status(405).send();
 
@@ -197,7 +210,7 @@ export default async function handler(req, res) {
 
             // ── Scoring logic ─────────────────────────────────
             // baseline 0.1 → +0.4 (device ใหม่) → +0.3 (fail > 3) → 1.0 (fail >= 5)
-            // [FIX-OAUTH-FLOW] ถ้าเป็น OAuth flow จากเว็บลูกค้า → ลดความเสี่ยง
+            // ถ้าเป็น OAuth flow จากแอพพลิเคชันของลูกค้า ให้ลดความเสี่ยงลง
             const isOAuthFlow = req.body.next && 
                                 typeof req.body.next === 'string' && 
                                 req.body.next.includes('/oauth/authorize');

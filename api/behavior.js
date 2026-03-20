@@ -46,10 +46,23 @@ const ENGINE_URL        = process.env.RISK_ENGINE_URL;
 const ENGINE_API_KEY    = process.env.RISK_ENGINE_API_KEY;
 const RISK_SHARED_SECRET = process.env.RISK_ENGINE_SHARED_SECRET;
 
+/**
+ * คำนวณค่า hash ของ token ด้วยอัลกอริทึม SHA-256 เพื่อความปลอดภัยในการตรวจสอบ
+ * @param {string} token - ข้อมูล token ที่ต้องการนำมา hash
+ * @returns {string} ค่า hash ในรูปแบบเลขฐานสิบหก (hex string)
+ */
 function hashToken(token) {
     return crypto.createHash('sha256').update(token).digest('hex');
 }
 
+/**
+ * สร้าง digital signature สำหรับยืนยันตัวตนกับระบบ Risk Engine ภายนอก
+ * โดยใช้ HMAC-SHA256 กับ timestamp, nonce และ hash ของข้อมูล body
+ * @param {string} timestamp - เวลาที่ส่ง request (ISO string)
+ * @param {string} nonce - ตัวเลขสุ่มแบบ UUID ป้องกัน Replay Attack
+ * @param {string} body - ข้อมูลพฤติกรรมในรูปแบบ JSON string
+ * @returns {string|null} ค่า signature ในรูปแบบ base64url หรือ null หากไม่ได้ตั้งค่า Secret
+ */
 function signForRiskEngine(timestamp, nonce, body) {
     if (!RISK_SHARED_SECRET) return null;
     const bodyHash = crypto.createHash('sha256').update(body).digest('hex');
@@ -57,6 +70,17 @@ function signForRiskEngine(timestamp, nonce, body) {
     return crypto.createHmac('sha256', RISK_SHARED_SECRET).update(base).digest('base64url');
 }
 
+/**
+ * API Handler หลักสำหรับรับข้อมูลพฤติกรรมการใช้งาน (Behavioral Data) ของผู้ใช้
+ * หน้าที่:
+ * 1. ตรวจสอบการ Authentication ของผู้ใช้ (รองรับทั้ง Session Cookie และ OAuth Bearer)
+ * 2. คัดกรองและปรับรูปแบบข้อมูลคุณลักษณะ (Feature Extraction) ให้อยู่ในช่วง 0-1
+ * 3. ส่งต่อข้อมูลไปยังระบบ Risk Engine เพื่อประเมินคะแนนความเสี่ยง (Behavior Score)
+ * 4. นำคะแนนมาประมวลผลร่วมกับความเสี่ยงเริ่มต้น (Pre-login Score) เพื่อตัดสินใจ Action
+ * @param {import('http').IncomingMessage} req - HTTP Request object
+ * @param {import('http').ServerResponse} res - HTTP Response object
+ * @returns {Promise<void>}
+ */
 export default async function handler(req, res) {
     if (req.method !== 'POST') return res.status(405).send();
 
@@ -166,6 +190,12 @@ export default async function handler(req, res) {
 
     const safeFeatures = features && typeof features === 'object' ? features : {};
 
+    /**
+     * ฟังก์ชันสำหรับจำกัดค่าตัวเลขให้อยู่ในช่วง 0 ถึง 1 เท่านั้น
+     * ป้องกันไม่ให้ค่า feature มีขนาดเกินขอบเขตที่โมเดลของ Risk Engine คาดหวัง
+     * @param {number} x - ค่าตัวเลขที่ต้องการจำกัดขอบเขต
+     * @returns {number} ค่าตัวเลขที่ถูกจำกัดให้อยู่ระหว่าง 0 ถึง 1
+     */
     function clamp01(x) {
         if (!Number.isFinite(x)) return 0;
         if (x < 0) return 0;

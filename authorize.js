@@ -1,6 +1,6 @@
 // authorize.js — CARS SSO OAuth Consent Page
 //
-// [FIX-PKCE] เพิ่ม scope, code_challenge, code_challenge_method ใน _oauthParams
+// เพิ่ม scope, code_challenge, code_challenge_method ใน _oauthParams
 //   เดิม: init() ไม่ได้อ่าน PKCE params จาก URL → handleAllow() ไม่ส่ง challenge ไป POST
 //         oauth.js INSERT oauth_codes โดยไม่มี code_challenge → client ส่ง code_verifier
 //         แต่ server ไม่มี challenge ไว้ match → PKCE ถูกละเลยทั้งหมด
@@ -40,6 +40,10 @@ function showError(msg) {
   $id('error-msg').textContent  = msg;
 }
 
+/**
+ * เริ่มต้นกระบวนการหน้าจอขออนุญาตสิทธิ์ (Authorize Consent)
+ * ดึง Parameter จาก URL เพื่อตรวจสอบความถูกต้อง และเตรียมค่าต่างๆ สำหรับหน้าจอ
+ */
 async function init() {
   document.body.classList.remove('auth-pending');
   $id('main-card').hidden = false;
@@ -50,7 +54,7 @@ async function init() {
   const responseType = sp.get('response_type');
   const state        = sp.get('state');
 
-  // [FIX-PKCE] อ่าน PKCE + scope params ที่ client ส่งมา
+  // อ่าน PKCE + scope params ที่ client ส่งมา
   const scope                = sp.get('scope')                  || null;
   const codeChallenge        = sp.get('code_challenge')         || null;
   const codeChallengeMethod  = sp.get('code_challenge_method')  || null;
@@ -60,7 +64,7 @@ async function init() {
     return;
   }
 
-  // [FIX-PKCE] เก็บ PKCE + scope ไว้ใน _oauthParams เพื่อส่งใน handleAllow()
+  // เก็บ PKCE + scope ไว้ใน _oauthParams เพื่อส่งใน handleAllow()
   _oauthParams = {
     clientId,
     redirectUri,
@@ -78,7 +82,7 @@ async function init() {
     apiUrl.searchParams.set('response_type', responseType);
     apiUrl.searchParams.set('state',         state);
 
-    // [FIX-PKCE] ส่ง PKCE + scope ไปใน GET เพื่อให้ server validate ก่อนแสดง consent UI
+    // ส่ง PKCE + scope ไปใน GET เพื่อให้ server validate ก่อนแสดง consent UI
     if (scope)               apiUrl.searchParams.set('scope',                 scope);
     if (codeChallenge)       apiUrl.searchParams.set('code_challenge',        codeChallenge);
     if (codeChallengeMethod) apiUrl.searchParams.set('code_challenge_method', codeChallengeMethod);
@@ -134,6 +138,10 @@ async function init() {
   }
 }
 
+/**
+ * จัดการเมื่อผู้ใช้กดปุ่ม 'Allow Access' (อนุญาต)
+ * ส่งข้อมูล Consent กลับไปยังเซิร์ฟเวอร์เพื่อออก Authorization Code ให้แอปภายนอก
+ */
 async function handleAllow() {
   if (_isSubmitting) return;
   _isSubmitting = true;
@@ -142,7 +150,7 @@ async function handleAllow() {
   setSubmitting(true);
 
   try {
-    // [FIX-PKCE] ส่ง scope + PKCE params ใน POST body ด้วย
+    // ส่ง scope + PKCE params ใน POST body ด้วย
     const body = {
       client_id:    _oauthParams.clientId,
       redirect_uri: _oauthParams.redirectUri,
@@ -198,6 +206,10 @@ async function handleAllow() {
   }
 }
 
+/**
+ * จัดการเมื่อผู้ใช้กดปุ่ม 'Deny' (ปฏิเสธ)
+ * จะทำการส่งข้อผิดพลาด `access_denied` กลับไปยัง Redirect URI ของแอปภายนอก
+ */
 function handleDeny() {
   if (_isSubmitting) return;
   if (!_oauthParams.redirectUri || !_oauthParams.state) {
@@ -216,7 +228,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $id('btn-allow')?.addEventListener('click', handleAllow);
   $id('btn-deny')?.addEventListener('click',  handleDeny);
   
-  // [FIX-LOGOUT] เก็บ OAuth URL ไว้ก่อน logout เพื่อกลับมาต่อ flow ได้
+  // เก็บ OAuth URL ไว้ก่อน logout เพื่อกลับมาต่อ flow ได้
   const signOutLink = document.querySelector('a[href="/logout"]');
   if (signOutLink) {
     signOutLink.addEventListener('click', (e) => {

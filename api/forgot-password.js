@@ -21,6 +21,16 @@ const SUCCESS_RESPONSE = Object.freeze({
     message: 'If this email is registered, you will receive a password reset link shortly.'
 });
 
+/**
+ * API Handler สำหรับระบบคำขอตั้งค่ารหัสผ่านใหม่ (Forgot Password)
+ * ทำหน้าที่รับอีเมลจากผู้ใช้ ตรวจสอบและสร้างลิงก์สำหรับรีเซ็ตรหัสผ่าน ส่งผ่านอีเมล
+ * 
+ * *ข้อควรระวังด้านความปลอดภัย: ตอบกลับด้วยข้อความสำเร็จเสมอ ไม่ว่าจะมีอีเมลนั้น
+ * ในระบบหรือไม่ เพื่อหลีกเลี่ยงการเปิดเผยข้อมูลแก่ผู้โจมตี (ป้องกัน Email Enumeration)
+ * @param {import('http').IncomingMessage} req - HTTP Request object
+ * @param {import('http').ServerResponse} res - HTTP Response object
+ * @returns {Promise<void>}
+ */
 export default async function handler(req, res) {
     if (req.method !== 'POST') return res.status(405).send();
 
@@ -108,7 +118,7 @@ export default async function handler(req, res) {
             await mailTransporter.sendMail({
                 from:    `"CARS SSO" <${process.env.EMAIL_USER}>`,
                 to:      emailLower,
-                subject: '🔐 Reset your password — CARS SSO',
+                subject: ' Reset your password — CARS SSO',
                 html:    `<p>Click the link below to set a new password:</p>
                           <p><a href="${resetLink}">${resetLink}</a></p>
                           <p>This link expires in 1 hour. If you did not request a password reset, you can safely ignore this email.</p>`
