@@ -229,11 +229,12 @@ export default async function handler(req, res) {
             // COMMIT ทุก level รวม HIGH — เพื่อ audit trail และ forensics
             let insertedId;
             try {
+                const actionForHigh = level === 'HIGH' ? 'revoke' : null;
                 const insertRes = await client.query(
-                    `INSERT INTO login_risks (username, device, fingerprint, risk_level, pre_login_score)
-                     VALUES ($1, $2, $3, $4, $5)
+                    `INSERT INTO login_risks (username, device, fingerprint, risk_level, pre_login_score, combined_action)
+                     VALUES ($1, $2, $3, $4, $5, $6)
                      RETURNING id`,
-                    [username, device, fingerprint, level, score]
+                    [username, device, fingerprint, level, score, actionForHigh]
                 );
                 insertedId = insertRes.rows[0]?.id;
                 await client.query('COMMIT');

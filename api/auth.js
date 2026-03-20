@@ -397,7 +397,11 @@ export default async function handler(req, res) {
 
                     // +1 guard: สงวน 1 slot สำหรับ verify
                     if (currentTotal + 1 >= TOTAL_MFA_MAX) {
-                        await loginClient.query('ROLLBACK');
+                        await loginClient.query(
+                            `UPDATE login_risks SET combined_action = 'revoke' WHERE id = $1`,
+                            [parsedLogId]
+                        );
+                        await loginClient.query('COMMIT');
                         auditLog('MFA_TOTAL_LIMIT_FIRST_SEND', { username, ip, total: currentTotal });
                         return res.status(429).json({ error: 'Too many failed attempts. Please sign in again.' });
                     }

@@ -171,7 +171,11 @@ async function handleVerifyMfa(req, res, ip) {
             const currentTotal    = Number(row.total_mfa_attempts || 0);
 
             if (currentAttempts >= MFA_MAX_ATTEMPTS || currentTotal >= TOTAL_MFA_MAX) {
-                await client.query('ROLLBACK');
+                await client.query(
+                    `UPDATE login_risks SET combined_action = 'revoke' WHERE id = $1`,
+                    [parsedLogId]
+                );
+                await client.query('COMMIT');
                 auditLog('MFA_ATTEMPT_LIMIT', { username, ip, currentAttempts, currentTotal });
                 return res.status(429).json({ error: 'Too many failed attempts. Please sign in again.' });
             }
@@ -356,7 +360,11 @@ async function handleResendMfa(req, res, ip) {
             const currentTotal = Number(total_mfa_attempts || 0);
 
             if (currentTotal + 1 >= TOTAL_MFA_MAX) {
-                await client.query('ROLLBACK');
+                await client.query(
+                    `UPDATE login_risks SET combined_action = 'revoke' WHERE id = $1`,
+                    [parsedLogId]
+                );
+                await client.query('COMMIT');
                 auditLog('MFA_TOTAL_LIMIT_RESEND', { username, ip, total: currentTotal });
                 return res.status(429).json({ error: 'Too many failed attempts. Please sign in again.' });
             }
