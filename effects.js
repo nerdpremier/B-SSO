@@ -90,8 +90,8 @@
     function loop() {
       ctx.clearRect(0, 0, W, H);
 
-      // Interpolate particles if mouse moved fast
-      if (isMoving && prevMouse.x !== -9999) {
+      // Continuously spawn particles around the mouse
+      if (prevMouse.x !== -9999) {
         var dist = Math.hypot(mouse.x - prevMouse.x, mouse.y - prevMouse.y);
         if (dist > 5) {
           var steps = Math.min(Math.floor(dist / 5), 10);
@@ -103,8 +103,9 @@
             }
           }
         } else {
-          if (Math.random() > 0.5) {
-             particles.push(new Particle(mouse.x, mouse.y, mouse.x - prevMouse.x, mouse.y - prevMouse.y));
+          // Spawn constantly when mouse is slow or entirely still
+          if (Math.random() > 0.3) {
+             particles.push(new Particle(mouse.x, mouse.y, (Math.random() - 0.5) * 2, (Math.random() - 0.5) * 2));
           }
         }
       }
