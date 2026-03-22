@@ -1,5 +1,5 @@
 /**
- * effects.js — CARS SSO
+ * effects.js — B-SSO (Behavioral Risk-Based Single Sign-On)
  * Dark navy background + interactive grid tiles that glow & flip to white near mouse
  */
 (function () {

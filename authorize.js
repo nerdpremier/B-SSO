@@ -1,4 +1,4 @@
-// authorize.js — CARS SSO OAuth Consent Page
+// authorize.js — B-SSO (Behavioral Risk-Based Single Sign-On) OAuth Consent Page
 //
 // เพิ่ม scope, code_challenge, code_challenge_method ใน _oauthParams
 //   เดิม: init() ไม่ได้อ่าน PKCE params จาก URL → handleAllow() ไม่ส่ง challenge ไป POST

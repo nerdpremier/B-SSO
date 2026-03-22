@@ -116,9 +116,9 @@ export default async function handler(req, res) {
 
         try {
             await mailTransporter.sendMail({
-                from:    `"CARS SSO" <${process.env.EMAIL_USER}>`,
+                from:    `"B-SSO" <${process.env.EMAIL_USER}>`,
                 to:      emailLower,
-                subject: ' Reset your password — CARS SSO',
+                subject: ' Reset your password — B-SSO',
                 html:    `<p>Click the link below to set a new password:</p>
                           <p><a href="${resetLink}">${resetLink}</a></p>
                           <p>This link expires in 1 hour. If you did not request a password reset, you can safely ignore this email.</p>`

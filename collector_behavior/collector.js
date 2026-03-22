@@ -10,7 +10,7 @@
 //
 //   <script src="https://YOUR_SSO_DOMAIN/collector_behavior/collector.js" defer></script>
 //   <script>
-//     window.CARSBehaviorCollector && window.CARSBehaviorCollector.start({
+//     window.BSSOBehaviorCollector && window.BSSOBehaviorCollector.start({
 //       intervalMs: 15000
 //     });
 //   </script>
@@ -21,7 +21,7 @@
 // ============================================================
 
 (function () {
-  if (window.CARSBehaviorCollector) return;
+  if (window.BSSOBehaviorCollector) return;
 
   const DEFAULT_INTERVAL = 15000;
 
@@ -279,14 +279,14 @@
 
           if (action === 'medium') {
             // บังคับให้ลูกค้าแสดง step-up MFA เอง
-            window.dispatchEvent(new CustomEvent('cars-behavior-medium', { detail: data }));
+            window.dispatchEvent(new CustomEvent('bsso-behavior-medium', { detail: data }));
           } else if (action === 'revoke') {
             // บังคับ logout ปัจจุบัน
-            window.dispatchEvent(new CustomEvent('cars-behavior-revoke', { detail: data }));
+            window.dispatchEvent(new CustomEvent('bsso-behavior-revoke', { detail: data }));
           }
         } catch (err) {
           // fail-quiet
-          console && console.debug && console.debug('[CARSBehaviorCollector] flush error', err.message || err);
+          console && console.debug && console.debug('[BSSOBehaviorCollector] flush error', err.message || err);
         }
       } catch (outer) {
         // swallow
@@ -314,6 +314,6 @@
     return { start, stop };
   }
 
-  window.CARSBehaviorCollector = createCollector();
+  window.BSSOBehaviorCollector = createCollector();
 })();
 

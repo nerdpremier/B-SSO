@@ -168,9 +168,9 @@ export default async function handler(req, res) {
 
             try {
                 await mailTransporter.sendMail({
-                    from:    `"CARS SSO" <${process.env.EMAIL_USER}>`,
+                    from:    `"B-SSO" <${process.env.EMAIL_USER}>`,
                     to:      email,
-                    subject: ' Step-up verification code (CARS)',
+                    subject: ' Step-up verification code (B-SSO)',
                     html:    `<p>Your verification code is:</p>
                               <h2 style="letter-spacing:2px">${code}</h2>
                               <p>This code expires in 5 minutes.</p>`,

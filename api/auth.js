@@ -274,9 +274,9 @@ export default async function handler(req, res) {
                 
                 try {
                     await mailTransporter.sendMail({
-                        from:    `"CARS SSO" <${process.env.EMAIL_USER}>`,
+                        from:    `"B-SSO" <${process.env.EMAIL_USER}>`,
                         to:      emailNormalized,
-                        subject: ' Verify your email — CARS SSO',
+                        subject: ' Verify your email — B-SSO',
                         html:    `<h2>Welcome, ${username}!</h2>
                                   <p>Click the link below to verify your email address:</p>
                                   <p><a href="${verifyLink}">${verifyLink}</a></p>

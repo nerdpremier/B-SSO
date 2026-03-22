@@ -1,7 +1,7 @@
 {
-  "name": "secure-system",
+  "name": "b-sso",
   "version": "1.0.0",
-  "description": "Secure authentication system with adaptive MFA",
+  "description": "Behavioral Risk-Based Single Sign-On (B-SSO) - Modern security with behavioral analysis",
 
   "private": true,
 

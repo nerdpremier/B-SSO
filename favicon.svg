@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <linearGradient id="shieldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366F1" />
+      <stop offset="100%" style="stop-color:#A855F7" />
+    </linearGradient>
+    <linearGradient id="waveGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#60A5FA" />
+      <stop offset="100%" style="stop-color:#34D399" />
+    </linearGradient>
+  </defs>
+
+  <rect width="32" height="32" rx="6" fill="#0A0E23"/>
+
+  <path d="M16 6 C16 6, 23 8, 24 10 L24 20 C24 26, 16 29, 16 29 C16 29, 8 26, 8 20 L8 10 C9 8, 16 6, 16 6 Z"
+        fill="url(#shieldGrad)"/>
+
+  <path d="M12 17 Q13 15, 14 17 T16 17 T18 17 T20 17"
+        fill="none"
+        stroke="url(#waveGrad)"
+        stroke-width="2"
+        stroke-linecap="round"/>
+
+  <circle cx="14" cy="17" r="1" fill="#22D3EE"/>
+  <circle cx="16" cy="17" r="1" fill="#34D399"/>
+  <circle cx="18" cy="17" r="1" fill="#60A5FA"/>
+
+  <circle cx="16" cy="13" r="1.5" fill="white"/>
+</svg>
