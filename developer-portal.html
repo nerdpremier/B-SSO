@@ -1,23 +1,26 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; form-action 'self'; base-uri 'none';">
+    content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; form-action 'self'; base-uri 'none';">
   <title>Developer Portal — B-SSO</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap"
+    rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
   <link rel="stylesheet" href="/developer-portal.css">
 </head>
+
 <body class="auth-pending">
 
-  <div class="confirm-overlay" id="confirm-overlay"
-       role="dialog" aria-modal="true" aria-labelledby="confirm-title-text"
-       hidden>
+  <div class="confirm-overlay" id="confirm-overlay" role="dialog" aria-modal="true" aria-labelledby="confirm-title-text"
+    hidden>
     <div class="confirm-box">
       <div class="confirm-title" id="confirm-title-text">Delete this app?</div>
       <p class="confirm-msg">
@@ -25,15 +28,14 @@
         All tokens will be revoked immediately.
       </p>
       <div class="confirm-actions">
-        <button class="btn-cancel"         id="btn-cancel"         type="button">Cancel</button>
+        <button class="btn-cancel" id="btn-cancel" type="button">Cancel</button>
         <button class="btn-confirm-delete" id="btn-confirm-delete" type="button">Delete</button>
       </div>
     </div>
   </div>
 
-  <div class="confirm-overlay" id="rotate-overlay"
-       role="dialog" aria-modal="true" aria-labelledby="rotate-title-text"
-       hidden>
+  <div class="confirm-overlay" id="rotate-overlay" role="dialog" aria-modal="true" aria-labelledby="rotate-title-text"
+    hidden>
     <div class="confirm-box">
       <div class="confirm-title" id="rotate-title-text">Rotate secret?</div>
       <p class="confirm-msg">
@@ -41,7 +43,7 @@
         All existing tokens will be revoked immediately.
       </p>
       <div class="confirm-actions">
-        <button class="btn-cancel"         id="btn-rotate-cancel"  type="button">Cancel</button>
+        <button class="btn-cancel" id="btn-rotate-cancel" type="button">Cancel</button>
         <button class="btn-confirm-rotate" id="btn-confirm-rotate" type="button">Rotate</button>
       </div>
     </div>
@@ -58,7 +60,6 @@
         </a>
         <div>
           <div class="portal-title">Developer Portal</div>
-          <div class="portal-subtitle">B-SSO Integration</div>
         </div>
       </div>
       <div class="topbar-right">
@@ -83,14 +84,14 @@
         <div class="form-row">
           <div class="form-col">
             <label class="field-label" for="input-name">App Name</label>
-            <input class="field-input" id="input-name" type="text"
-              placeholder="e.g. My Website" maxlength="128" autocomplete="off">
+            <input class="field-input" id="input-name" type="text" placeholder="e.g. My Website" maxlength="128"
+              autocomplete="off">
             <p class="field-hint" style="margin-top:6px;visibility:hidden" aria-hidden="true">Your website name</p>
           </div>
           <div class="form-col">
             <label class="field-label" for="input-uri">Callback URL</label>
-            <input class="field-input" id="input-uri" type="url"
-              placeholder="https://myapp.com/callback" maxlength="512" autocomplete="off">
+            <input class="field-input" id="input-uri" type="url" placeholder="https://myapp.com/callback"
+              maxlength="512" autocomplete="off">
             <p class="field-hint" style="margin-top:6px"> Where users land after a successful login</p>
           </div>
           <div class="form-col form-col--btn">
@@ -115,7 +116,8 @@
             <div class="cred-label">Client Secret</div>
             <div class="cred-value">
               <span class="cred-text" id="res-client-secret"></span>
-              <button class="btn-copy" id="copy-client-secret" type="button" aria-label="Copy Client Secret">Copy</button>
+              <button class="btn-copy" id="copy-client-secret" type="button"
+                aria-label="Copy Client Secret">Copy</button>
             </div>
           </div>
           <div class="warn-notice">
@@ -148,4 +150,5 @@
   <script src="/effects.js"></script>
   <script src="/developer-portal.js"></script>
 </body>
+
 </html>
