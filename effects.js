@@ -6,120 +6,29 @@
   'use strict';
 
   /* ══════════════════════════════════════════════════════════
-     1.  INTERACTIVE CANVAS (Google Antigravity Swirling Particles)
+     1.  INTERACTIVE CANVAS (Google Antigravity Soft Blurred Aura)
      ══════════════════════════════════════════════════════════ */
   (function initCanvas() {
     var canvas = document.createElement('canvas');
     canvas.id = 'bg-canvas';
     canvas.setAttribute('aria-hidden', 'true');
     // Ensure the canvas sits behind everything but doesn't block clicks
-    canvas.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; opacity: 0.85;';
+    canvas.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; mix-blend-mode: multiply;';
     document.body.insertBefore(canvas, document.body.firstChild);
 
     var ctx = canvas.getContext('2d', { alpha: false });
     var W = 0, H = 0, cx = 0, cy = 0;
 
     /* ── Mouse ────────────────────────── */
-    var mouse = { x: -9999, y: -9999 };
-    var isMoving = false;
-    var mouseTimeout;
+    var mouse = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    var targetMouse = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
 
-    /* ── Particles ────────────────────── */
-    var particles = [];
-    var NUM_PARTICLES = 1200; // Dense particle field
-    
-    // Antigravity Brand Colors
-    var colors = [
-      '#3B82F6', // Blue
-      '#8B5CF6', // Purple
-      '#EF4444', // Red
-      '#F59E0B', // Orange
-      '#06B6D4'  // Cyan
+    /* ── Blobs ────────────────────── */
+    var blobs = [
+      { color: 'rgba(56, 189, 248, 0.4)', size: 600, x: 0, y: 0, vx: 0.5, vy: 0.3, phaseX: 0, phaseY: 0, speed: 0.001, followWeight: 0.05 }, // Aqua/Blue
+      { color: 'rgba(167, 139, 250, 0.4)', size: 500, x: 0, y: 0, vx: -0.4, vy: 0.6, phaseX: 1, phaseY: 2, speed: 0.0015, followWeight: 0.03 }, // Purple
+      { color: 'rgba(244, 114, 182, 0.3)', size: 400, x: 0, y: 0, vx: 0.6, vy: -0.4, phaseX: 2, phaseY: 1, speed: 0.002, followWeight: 0.08 }  // Pink
     ];
-
-    class Particle {
-      constructor() {
-        this.reset(true);
-      }
-
-      reset(randomizeRadius) {
-        // Distribute particles in a swirling orbit around center
-        var angle = Math.random() * Math.PI * 2;
-        var radius = randomizeRadius ? Math.random() * (Math.max(W, H) * 0.8) : Math.max(W, H) * 0.8 + Math.random() * 100;
-        
-        this.x = cx + Math.cos(angle) * radius;
-        this.y = cy + Math.sin(angle) * radius;
-        
-        // Base orbit speed
-        this.orbitSpeed = (Math.random() * 0.001) + 0.0005;
-        this.angle = angle;
-        this.radius = radius;
-        
-        // Radial inward drift
-        this.drift = (Math.random() * 0.5) + 0.1;
-        
-        this.size = Math.random() * 1.5 + 0.5;
-        this.length = Math.random() * 20 + 10;
-        this.color = colors[Math.floor(Math.random() * colors.length)];
-        this.alpha = Math.random() * 0.5 + 0.1;
-      }
-
-      update() {
-        // Orbit math
-        this.angle += this.orbitSpeed;
-        this.radius -= this.drift;
-        
-        // Mouse interaction (repel)
-        var dx = this.x - mouse.x;
-        var dy = this.y - mouse.y;
-        var dist = Math.sqrt(dx * dx + dy * dy);
-        
-        var targetX = cx + Math.cos(this.angle) * this.radius;
-        var targetY = cy + Math.sin(this.angle) * this.radius;
-
-        if (dist < 150 && isMoving) {
-          var force = (150 - dist) / 150;
-          targetX += (dx / dist) * force * 100;
-          targetY += (dy / dist) * force * 100;
-        }
-
-        // Smoothly move to target
-        this.x += (targetX - this.x) * 0.1;
-        this.y += (targetY - this.y) * 0.1;
-
-        // Reset if inhaled into center
-        if (this.radius < 20) {
-          this.reset(false);
-          this.radius = Math.max(W, H) * 0.8; 
-          this.alpha = 0; // fade in
-        } else if (this.alpha < 0.6) {
-          this.alpha += 0.01;
-        }
-      }
-
-      draw() {
-        // Calculate tangent vector for the dash direction (perpendicular to radius)
-        var dashAngle = this.angle + Math.PI / 2;
-        if (this.radius < 100) {
-            // swirl intensely inward
-            dashAngle += Math.PI / 4;
-        }
-
-        ctx.save();
-        ctx.translate(this.x, this.y);
-        ctx.rotate(dashAngle);
-        ctx.globalAlpha = this.alpha;
-        ctx.lineCap = 'round';
-        ctx.lineWidth = this.size;
-        ctx.strokeStyle = this.color;
-        
-        ctx.beginPath();
-        ctx.moveTo(-this.length / 2, 0);
-        ctx.lineTo(this.length / 2, 0);
-        ctx.stroke();
-        ctx.restore();
-      }
-    }
 
     /* ── Init & Resize ───────────────────────────────────── */
     function resize() {
@@ -128,31 +37,63 @@
       cx = W / 2;
       cy = H / 2;
       
-      // Adjust particle count based on screen size
-      var targetParticles = Math.min(2000, Math.floor((W * H) / 1000));
-      if (particles.length === 0) {
-         for (var i = 0; i < targetParticles; i++) particles.push(new Particle());
-      }
+      // Initialize blob positions
+      blobs.forEach(blob => {
+        blob.x = cx;
+        blob.y = cy;
+      });
     }
 
     /* ── Main loop ───────────────────────────────────────── */
-    function loop() {
-      // Draw pristine white/blue background directly on canvas to prevent stacking lag
-      var grd = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H));
-      grd.addColorStop(0, '#ffffff');
-      grd.addColorStop(1, '#e0f2fe'); // Soft blue vignette
-      
-      ctx.globalAlpha = 1.0;
-      ctx.fillStyle = grd;
+    function loop(time) {
+      // 1. Draw solid white background
+      ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, W, H);
 
-      // Composite operation for vivid colors
+      // Smoothly interpolate mouse position for a "fluid" dragging effect
+      mouse.x += (targetMouse.x - mouse.x) * 0.05;
+      mouse.y += (targetMouse.y - mouse.y) * 0.05;
+
+      // Composite mode for soft color blending
+      ctx.globalCompositeOperation = 'multiply';
+
+      // 2. Draw Blobs
+      blobs.forEach(blob => {
+        // Natural drifting ( Lissajous curve )
+        blob.phaseX += blob.speed;
+        blob.phaseY += blob.speed;
+        
+        var driftX = Math.sin(blob.phaseX) * W * 0.2;
+        var driftY = Math.cos(blob.phaseY) * H * 0.2;
+
+        // Combine base drift with gentle mouse following
+        var targetX = mouse.x + driftX;
+        var targetY = mouse.y + driftY;
+
+        blob.x += (targetX - blob.x) * blob.followWeight;
+        blob.y += (targetY - blob.y) * blob.followWeight;
+
+        // Draw radial gradient (soft blur)
+        var grd = ctx.createRadialGradient(blob.x, blob.y, 0, blob.x, blob.y, blob.size);
+        grd.addColorStop(0, blob.color);
+        
+        // Extract base color, set alpha to 0 for the edge
+        var edgeColor = blob.color.replace(/[\d.]+\)$/g, '0)'); 
+        grd.addColorStop(1, edgeColor);
+
+        ctx.fillStyle = grd;
+        ctx.fillRect(0, 0, W, H);
+      });
+
+      // Restore normal composite operation to draw vignette
       ctx.globalCompositeOperation = 'source-over';
 
-      for (var i = 0; i < particles.length; i++) {
-        particles[i].update();
-        particles[i].draw();
-      }
+      // 3. Draw soft noise / texture overlay if desired, or just vignette
+      var vignette = ctx.createRadialGradient(cx, cy, H * 0.3, cx, cy, H * 1.5);
+      vignette.addColorStop(0, 'rgba(240, 249, 255, 0)');
+      vignette.addColorStop(1, 'rgba(224, 242, 254, 0.6)'); // Soft light blue at edges
+      ctx.fillStyle = vignette;
+      ctx.fillRect(0, 0, W, H);
 
       requestAnimationFrame(loop);
     }
@@ -160,16 +101,18 @@
     /* ── Events ──────────────────────────────────────────── */
     window.addEventListener('resize', resize);
     document.addEventListener('mousemove', function(e) { 
-      mouse.x = e.clientX; 
-      mouse.y = e.clientY; 
-      isMoving = true;
-      
-      clearTimeout(mouseTimeout);
-      mouseTimeout = setTimeout(() => { isMoving = false; }, 200);
+      targetMouse.x = e.clientX; 
+      targetMouse.y = e.clientY; 
+    });
+    
+    // When mouse leaves, return blobs to center slowly
+    document.addEventListener('mouseleave', function() { 
+      targetMouse.x = cx;
+      targetMouse.y = cy;
     });
 
     resize();
-    loop();
+    requestAnimationFrame(loop);
   })();
 
   /* ══════════════════════════════════════════════════════════
