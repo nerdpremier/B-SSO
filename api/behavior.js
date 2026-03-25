@@ -312,30 +312,40 @@ export default async function handler(req, res) {
 
         // พยายามดึง pre-login score ถ้ามี
         let loginRiskId = null;
+        console.info(`[TRACE] behavior.js: Starting correlation for user="${username}", sessionJti="${sessionJti}", pre_login_log_id=${preLoginLogId}`);
+        
         try {
             // (1B) ถ้ามี pre_login_log_id จากเว็บลูกค้า → ใช้อันนี้ก่อน
-            const parsed = Number(preLoginLogId);
-            if (Number.isInteger(parsed) && parsed > 0) {
-                const byId = await pool.query(
-                    `SELECT id, pre_login_score
-                     FROM login_risks
-                     WHERE id = $1 AND username = $2
-                     ORDER BY created_at DESC
-                     LIMIT 1`,
-                    [parsed, username]
-                );
-                if (byId.rows[0]) {
-                    loginRiskId = byId.rows[0].id;
-                    preLoginScore = Number(byId.rows[0].pre_login_score || 0);
+            if (preLoginLogId) {
+                const parsed = Number(preLoginLogId);
+                console.info(`[TRACE] behavior.js: Checking (1B) by ID=${parsed}`);
+                if (Number.isInteger(parsed) && parsed > 0) {
+                    const byId = await pool.query(
+                        `SELECT id, pre_login_score, is_success
+                         FROM login_risks
+                         WHERE id = $1 AND username = $2
+                         LIMIT 1`,
+                        [parsed, username]
+                    );
+                    if (byId.rows[0]) {
+                        loginRiskId = byId.rows[0].id;
+                        preLoginScore = Number(byId.rows[0].pre_login_score || 0);
+                        console.info(`[TRACE] behavior.js: (1B) Match found! id=${loginRiskId}, preScore=${preLoginScore}, is_success=${byId.rows[0].is_success}`);
+                    } else {
+                        console.info(`[TRACE] behavior.js: (1B) No match for id=${parsed} and user="${username}"`);
+                    }
+                } else {
+                    console.info(`[TRACE] behavior.js: (1B) Invalid ID format: ${preLoginLogId}`);
                 }
             }
             
             // (2) ถ้าไม่เจอจาก ID ให้ลองหาด้วย session_jti
             if (!loginRiskId && sessionJti) {
+                console.info(`[TRACE] behavior.js: Checking (2) by sessionJti="${sessionJti}"`);
                 const preRes = await pool.query(
-                    `SELECT id, pre_login_score
+                    `SELECT id, pre_login_score, is_success
                      FROM login_risks
-                     WHERE username = $1 AND session_jti = $2 AND is_success = TRUE
+                     WHERE username = $1 AND session_jti = $2
                      ORDER BY created_at DESC
                      LIMIT 1`,
                     [username, sessionJti]
@@ -343,11 +353,15 @@ export default async function handler(req, res) {
                 if (preRes.rows[0]) {
                     loginRiskId = preRes.rows[0].id;
                     preLoginScore = Number(preRes.rows[0].pre_login_score || 0);
+                    console.info(`[TRACE] behavior.js: (2) Match found! id=${loginRiskId}, preScore=${preLoginScore}, is_success=${preRes.rows[0].is_success}`);
+                } else {
+                    console.info(`[TRACE] behavior.js: (2) No match for sessionJti="${sessionJti}"`);
                 }
             }
             
             // (3) FINAL FALLBACK: หา pre-login score ล่าสุดของ username ที่ success
             if (!loginRiskId) {
+                console.info(`[TRACE] behavior.js: Checking (3) Fallback for user="${username}"`);
                 const fallbackRes = await pool.query(
                     `SELECT id, pre_login_score
                      FROM login_risks
@@ -359,12 +373,16 @@ export default async function handler(req, res) {
                 if (fallbackRes.rows[0]) {
                     loginRiskId = fallbackRes.rows[0].id;
                     preLoginScore = Number(fallbackRes.rows[0].pre_login_score || 0);
-                    console.log(`[INFO] behavior.js: Using fallback pre-login score for ${username}, login_risk_id=${loginRiskId}`);
+                    console.info(`[TRACE] behavior.js: (3) Match found via Fallback! id=${loginRiskId}, preScore=${preLoginScore}`);
+                } else {
+                    console.info(`[TRACE] behavior.js: (3) No success record found for user="${username}"`);
                 }
             }
         } catch (preErr) {
-            console.error('[WARN] behavior.js pre-login lookup failed:', preErr.message);
+            console.error('[ERROR] behavior.js correlation failed:', preErr.message);
         }
+
+        console.info(`[TRACE] behavior.js: Correlation result: loginRiskId=${loginRiskId}, behaviorScore=${behaviorScore}`);
 
         // รวมคะแนนได้ก็ต่อเมื่อมี behaviorScore (จาก engine /score) และมี pre-login score
         if (behaviorScore != null && loginRiskId != null) {
