@@ -210,17 +210,16 @@ export default async function handler(req, res) {
 
             // ── Scoring logic ─────────────────────────────────
             // baseline 0.1 → +0.4 (device ใหม่) → +0.3 (fail > 3) → 1.0 (fail >= 5)
-            // ถ้าเป็น OAuth flow จากแอพพลิเคชันของลูกค้า ให้ลดความเสี่ยงลง
-            const isOAuthFlow = req.body.next && 
-                                typeof req.body.next === 'string' && 
+            // SECURITY FIX: OAuth flows now require same device validation as direct login
+            // This prevents attackers from bypassing device risk checks via OAuth
+            const isOAuthFlow = req.body.next &&
+                                typeof req.body.next === 'string' &&
                                 req.body.next.includes('/oauth/authorize');
-            
+
             let score = 0.1;
-            if (!fp_match && !isOAuthFlow) score += 0.4; // device ใหม่ แต่ไม่ใช่ OAuth → +0.4
-            if (isOAuthFlow) {
-                // OAuth flow จากเว็บลูกค้า → ถือว่า trusted
-                score = 0.1;
-            }
+            // SECURITY FIX: Device fingerprint check applies to ALL flows including OAuth
+            // Previously OAuth bypassed device checks with score reset
+            if (!fp_match) score += 0.4; // device ใหม่ → +0.4 (applies to OAuth too)
             if (currentAttempt > 3)  score += 0.3;
             if (currentAttempt >= 5) score  = 1.0;
 

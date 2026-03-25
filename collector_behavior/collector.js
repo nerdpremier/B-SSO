@@ -53,6 +53,10 @@
     let scrollDirChanges = 0;
     let lastScrollSign = 0;
 
+    // ── dedup สำหรับ medium events ──
+    let _mediumPending = false;
+    let _mediumPendingSince = null;
+
     function record(type, payload) {
       events.push({
         type,
@@ -277,12 +281,20 @@
           const data = await res.json().catch(function () { return {}; });
           const action = (data.action || 'low').toLowerCase();
 
-          if (action === 'medium') {
-            // บังคับให้ลูกค้าแสดง step-up MFA เอง
+          if (action === 'medium' && !_mediumPending) {
+            // ตั้ง flag ป้องกันไม่ให้ fire ซ้ำจนกว่าจะ verify สำเร็จ
+            _mediumPending = true;
+            _mediumPendingSince = Date.now();
             window.dispatchEvent(new CustomEvent('bsso-behavior-medium', { detail: data }));
           } else if (action === 'revoke') {
             // บังคับ logout ปัจจุบัน
             window.dispatchEvent(new CustomEvent('bsso-behavior-revoke', { detail: data }));
+          }
+
+          // auto-reset medium flag หลัง 5 นาที (กรณี user ไม่ verify จะได้ trigger ใหม่ได้)
+          if (_mediumPending && _mediumPendingSince && (Date.now() - _mediumPendingSince > 5 * 60 * 1000)) {
+            _mediumPending = false;
+            _mediumPendingSince = null;
           }
         } catch (err) {
           // fail-quiet
@@ -311,7 +323,12 @@
       events = [];
     }
 
-    return { start, stop };
+    function clearMedium() {
+      _mediumPending = false;
+      _mediumPendingSince = null;
+    }
+
+    return { start, stop, clearMedium };
   }
 
   window.BSSOBehaviorCollector = createCollector();

@@ -786,16 +786,74 @@ async function handleToken(req, res, ip) {
                 [rt.id]
             );
 
+            // SECURITY FIX: OAuth refresh token risk re-assessment
+            // Re-calculate risk based on current device/IP context before issuing new tokens
+            const refreshFingerprint = `oauth_refresh:${client_id}:${ip}`;
+            const deviceRes = await tokenClient.query(
+                'SELECT id FROM user_devices WHERE username = $1 AND fingerprint = $2',
+                [rt.username, refreshFingerprint]
+            );
+            const fpMatch = deviceRes.rows.length > 0;
+
+            // Calculate current risk score
+            let currentRiskScore = 0.1;
+            if (!fpMatch) currentRiskScore += 0.4; // New device
+
+            // Check for recent failed attempts
+            const failRes = await tokenClient.query(
+                `SELECT COUNT(*) AS cnt FROM login_risks
+                 WHERE username = $1 AND is_success = FALSE
+                 AND created_at > NOW() - INTERVAL '60 seconds'`,
+                [rt.username]
+            );
+            const recentFails = Number(failRes.rows[0]?.cnt || 0);
+            if (recentFails > 3) currentRiskScore += 0.3;
+            if (recentFails >= 5) currentRiskScore = 1.0;
+
+            const currentRiskLevel = currentRiskScore >= 1.0 ? 'HIGH' :
+                                    (currentRiskScore >= 0.5 ? 'MEDIUM' : 'LOW');
+
+            // Determine if step-up MFA is required
+            const stepUpRequired = currentRiskLevel === 'MEDIUM' || currentRiskLevel === 'HIGH';
+
+            auditLog('OAUTH_REFRESH_RISK_ASSESSMENT', {
+                clientId: client_id,
+                username: rt.username,
+                ip,
+                fpMatch,
+                recentFails,
+                riskScore: currentRiskScore,
+                riskLevel: currentRiskLevel,
+                stepUpRequired
+            });
+
+            // SECURITY FIX: Block HIGH risk refresh attempts
+            if (currentRiskLevel === 'HIGH') {
+                await tokenClient.query('ROLLBACK');
+                auditLog('OAUTH_REFRESH_HIGH_RISK_BLOCKED', {
+                    clientId: client_id,
+                    username: rt.username,
+                    ip,
+                    riskScore: currentRiskScore
+                });
+                return res.status(403).json({
+                    error: 'access_denied',
+                    error_description: 'High risk detected. Please re-authenticate.',
+                    step_up_required: true
+                });
+            }
+
             const scope       = rt.scope || DEFAULT_SCOPE;
             const accessToken = crypto.randomBytes(32).toString('hex');
             const accessHash  = hashToken(accessToken);
             const accessExp   = new Date(Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000);
 
+            // SECURITY FIX: Store current risk level and step-up requirement with token
             const newAccessResult = await tokenClient.query(
-                `INSERT INTO oauth_tokens (token_hash, token_type, client_id, username, scope, expires_at)
-                 VALUES ($1, 'access', $2, $3, $4, $5)
+                `INSERT INTO oauth_tokens (token_hash, token_type, client_id, username, scope, expires_at, risk_level, step_up_required)
+                 VALUES ($1, 'access', $2, $3, $4, $5, $6, $7)
                  RETURNING id`,
-                [accessHash, client_id, rt.username, scope, accessExp]
+                [accessHash, client_id, rt.username, scope, accessExp, currentRiskLevel, stepUpRequired]
             );
             const newAccessTokenId = newAccessResult.rows[0].id;
 
@@ -814,22 +872,22 @@ async function handleToken(req, res, ip) {
                 
                 const preLoginScore = preLoginRes.rows[0]?.pre_login_score || 0.1;
                 
-                // Create pre-login record for the refreshed access token
+                // SECURITY FIX: Use actual calculated risk level instead of hard-coded LOW
                 await tokenClient.query(
-                    `INSERT INTO login_risks 
+                    `INSERT INTO login_risks
                      (username, device, fingerprint, risk_level, pre_login_score, session_jti, is_success)
                      VALUES ($1, $2, $3, $4, $5, $6, $7)`,
                     [
                         rt.username,
                         `oauth_token_refreshed:${newAccessTokenId}`,
-                        `oauth:${client_id}:${newAccessTokenId}`,
-                        'LOW', // Refreshed OAuth tokens are also LOW risk
-                        preLoginScore,
+                        refreshFingerprint,
+                        currentRiskLevel,  // SECURITY FIX: Use actual risk level
+                        currentRiskScore,  // SECURITY FIX: Use current score, not inherited
                         `oauth:${newAccessTokenId}`,
                         true
                     ]
                 );
-                console.log(`[INFO] oauth.js: Created pre-login record for refreshed OAuth token ${newAccessTokenId}, score=${preLoginScore}`);
+                console.log(`[INFO] oauth.js: Created pre-login record for refreshed OAuth token ${newAccessTokenId}, score=${currentRiskScore}, level=${currentRiskLevel}`);
             } catch (refreshPreLoginErr) {
                 console.error('[WARN] oauth.js refresh pre-login record creation failed:', refreshPreLoginErr.message);
                 // Don't fail OAuth flow, just log error
@@ -840,22 +898,40 @@ async function handleToken(req, res, ip) {
             const newRefreshHash  = hashToken(newRefreshToken);
             const newRefreshExp   = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 86400 * 1000);
 
+            // SECURITY FIX: Store risk level with refresh token too
             await tokenClient.query(
-                `INSERT INTO oauth_tokens (token_hash, token_type, client_id, username, scope, expires_at)
-                 VALUES ($1, 'refresh', $2, $3, $4, $5)`,
-                [newRefreshHash, client_id, rt.username, scope, newRefreshExp]
+                `INSERT INTO oauth_tokens (token_hash, token_type, client_id, username, scope, expires_at, risk_level)
+                 VALUES ($1, 'refresh', $2, $3, $4, $5, $6)`,
+                [newRefreshHash, client_id, rt.username, scope, newRefreshExp, currentRiskLevel]
             );
 
             await tokenClient.query('COMMIT');
-            auditLog('OAUTH_TOKEN_REFRESHED', { clientId: client_id, username: rt.username, ip });
+            auditLog('OAUTH_TOKEN_REFRESHED', {
+                clientId: client_id,
+                username: rt.username,
+                ip,
+                riskLevel: currentRiskLevel,
+                stepUpRequired: stepUpRequired
+            });
 
-            return res.status(200).json({
+            // SECURITY FIX: Include step_up_required in token response
+            const tokenResponse = {
                 access_token:  accessToken,
                 token_type:    'Bearer',
                 expires_in:    ACCESS_TOKEN_TTL_SECONDS,
                 refresh_token: newRefreshToken,
                 scope:         scope.join(' '),
-            });
+            };
+
+            // Add step_up_required flag for MEDIUM/HIGH risk
+            if (stepUpRequired) {
+                tokenResponse.step_up_required = true;
+                tokenResponse.step_up_reason = currentRiskLevel === 'HIGH'
+                    ? 'high_risk_detected'
+                    : 'medium_risk_detected';
+            }
+
+            return res.status(200).json(tokenResponse);
         }
 
     } catch (err) {

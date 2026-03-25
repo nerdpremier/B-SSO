@@ -415,6 +415,27 @@ export default async function handler(req, res) {
                         return res.status(429).json({ error: 'Too many failed attempts. Please sign in again.' });
                     }
 
+                    // Security Fix: Check if there's already a valid MFA code that hasn't expired
+                    const existingMfaRes = await loginClient.query(
+                        `SELECT mfa_code, mfa_expires_at
+                         FROM login_risks
+                         WHERE id = $1
+                           AND mfa_code IS NOT NULL
+                           AND mfa_expires_at > NOW()
+                         FOR UPDATE`,
+                        [parsedLogId]
+                    );
+
+                    // If there's already a valid MFA code, don't generate a new one
+                    if (existingMfaRes.rows[0]) {
+                        await loginClient.query('COMMIT');
+                        auditLog('MFA_REUSE_EXISTING_CODE', { username, ip, logId: parsedLogId });
+                        return res.status(200).json({
+                            mfa_required:  true,
+                            email_pending: false  // Code already sent and still valid
+                        });
+                    }
+
                     const mfaCode = crypto.randomInt(100000, 1000000).toString();
                     const mfaHash = hashMfaCode(mfaCode, parsedLogId);
 

@@ -40,7 +40,7 @@ import {
     isValidBody,
 } from '../lib/response-utils.js';
 import { pool }            from '../lib/db.js';
-import { ensureBehaviorRisksSchema, combineRisk, actionFromCombinedScore } from '../lib/risk-score.js';
+import { ensureBehaviorRisksSchema, combineRisk, actionFromCombinedScore, ensureStepupChallengesSchema } from '../lib/risk-score.js';
 
 const ENGINE_URL        = process.env.RISK_ENGINE_URL;
 const ENGINE_API_KEY    = process.env.RISK_ENGINE_API_KEY;
@@ -184,6 +184,7 @@ export default async function handler(req, res) {
     }
 
     await ensureBehaviorRisksSchema();
+    await ensureStepupChallengesSchema(); // SECURITY FIX: Ensure step-up table exists for OAuth
 
     const { events, page, meta, features } = req.body;
 
@@ -490,6 +491,61 @@ export default async function handler(req, res) {
                 } catch (dbErr) {
                     console.error('[WARN] behavior.js oauth revoke update failed:', dbErr.message);
                 }
+            }
+        }
+
+        // SECURITY FIX: For OAuth tokens with MEDIUM action, create step-up challenge
+        // This ensures automatic MFA trigger without relying on explicit client implementation
+        if (combinedAction === 'medium' && authType === 'oauth_bearer') {
+            try {
+                // Create step-up challenge for OAuth token
+                const stepupId = crypto.randomUUID();
+                const stepupCode = crypto.randomInt(100000, 1000000).toString();
+
+                // Hash the code with MFA pepper
+                const pepper = process.env.MFA_PEPPER || 'default-pepper-change-in-production';
+                const codeHash = crypto
+                    .createHmac('sha256', pepper)
+                    .update(`${stepupId}:${stepupCode}`)
+                    .digest('hex');
+
+                await pool.query(
+                    `INSERT INTO stepup_challenges (id, username, session_jti, code_hash, expires_at)
+                     VALUES ($1, $2, $3, $4, NOW() + INTERVAL '5 minutes')`,
+                    [stepupId, username, sessionJti, codeHash]
+                );
+
+                // Update OAuth token to require step-up
+                if (sessionJti) {
+                    const oauthTokenId = sessionJti.split(':')[1];
+                    if (oauthTokenId) {
+                        await pool.query(
+                            'UPDATE oauth_tokens SET step_up_required = TRUE WHERE id = $1',
+                            [oauthTokenId]
+                        );
+                    }
+                }
+
+                auditLog('OAUTH_STEP_UP_AUTO_CREATED', {
+                    username,
+                    ip,
+                    stepupId,
+                    sessionJti,
+                    combinedScore
+                });
+
+                // Return step_up action instead of just 'medium'
+                return res.status(200).json({
+                    action: 'step_up_required',
+                    request_id: requestId,
+                    stepup_id: stepupId,
+                    expires_in: 300, // 5 minutes
+                    reason: 'medium_risk_behavior_detected'
+                });
+            } catch (stepupErr) {
+                console.error('[WARN] behavior.js auto step-up creation failed:', stepupErr.message);
+                // Fall back to revoke if step-up creation fails (security first)
+                combinedAction = 'revoke';
             }
         }
 
