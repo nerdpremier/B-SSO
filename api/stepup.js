@@ -171,7 +171,7 @@ export default async function handler(req, res) {
 
             try {
                 await mailTransporter.sendMail({
-                    from:    `"B-SSO" <${process.env.EMAIL_USER}>`,
+                    from:    `"B-SSO" <${process.env.EMAIL_FROM}>`,
                     to:      email,
                     subject: ' Step-up verification code (B-SSO)',
                     html:    `<p>Your verification code is:</p>

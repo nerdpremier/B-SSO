@@ -116,7 +116,7 @@ export default async function handler(req, res) {
 
         try {
             await mailTransporter.sendMail({
-                from:    `"B-SSO" <${process.env.EMAIL_USER}>`,
+                from:    `"B-SSO" <${process.env.EMAIL_FROM}>`,
                 to:      emailLower,
                 subject: ' Reset your password — B-SSO',
                 html:    `<p>Click the link below to set a new password:</p>

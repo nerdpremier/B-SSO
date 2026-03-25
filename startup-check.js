@@ -119,5 +119,7 @@ for (const { check, error } of VALIDATIONS) {
     if (check()) fail(error);
 }
 
-// แจ้งว่าระบบพร้อมทำงานแล้ว
-console.log(JSON.stringify({ event: 'STARTUP_ENV_OK', ts: new Date().toISOString() }));
+// เพิ่ม EMAIL_FROM (optional): ถ้าไม่มีจะใช้ EMAIL_USER แทน
+if (!process.env.EMAIL_FROM?.trim()) {
+    process.env.EMAIL_FROM = process.env.EMAIL_USER;
+}

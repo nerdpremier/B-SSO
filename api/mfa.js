@@ -399,7 +399,7 @@ async function handleResendMfa(req, res, ip) {
             let emailSent = false;
             try {
                 await mailTransporter.sendMail({
-                    from:    `"Security System" <${process.env.EMAIL_USER}>`,
+                    from:    `"Security System" <${process.env.EMAIL_FROM}>`,
                     to:      email,
                     subject: ' Your new verification code (MFA)',
                     html:    `<h2>Your new code is: <b style="color:blue;">${mfaCode}</b></h2><p>This code expires in 5 minutes.</p>`

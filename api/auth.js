@@ -274,7 +274,7 @@ export default async function handler(req, res) {
                 
                 try {
                     await mailTransporter.sendMail({
-                        from:    `"B-SSO" <${process.env.EMAIL_USER}>`,
+                        from:    `"B-SSO" <${process.env.EMAIL_FROM}>`,
                         to:      emailNormalized,
                         subject: ' Verify your email — B-SSO',
                         html:    `<h2>Welcome, ${username}!</h2>
@@ -456,7 +456,7 @@ export default async function handler(req, res) {
                     let emailSent = false;
                     try {
                         await mailTransporter.sendMail({
-                            from:    `"Security System" <${process.env.EMAIL_USER}>`,
+                            from:    `"Security System" <${process.env.EMAIL_FROM}>`,
                             to:      user.email,
                             subject: ' Your verification code (MFA)',
                             html:    `<h2>Your code is: <b style="color:blue;">${mfaCode}</b></h2><p>This code expires in 5 minutes.</p>`
