@@ -29,6 +29,7 @@ import { getClientIp }    from '../lib/ip-utils.js';
 import jwt    from 'jsonwebtoken';
 import { parse } from 'cookie';
 import { auditLog } from '../lib/response-utils.js';
+import { ensureBehaviorRisksSchema } from '../lib/risk-score.js';
 import crypto from 'crypto';
 
 // ─── Constants ────────────────────────────────────────────────
@@ -387,6 +388,8 @@ async function handleAuthorize(req, res, ip) {
     } catch (rlErr) {
         console.error('[WARN] rate-limit error (oauth-authorize), failing open:', rlErr.message);
     }
+    // ── Ensure DB schema มี pre_login_log_id column ──
+    await ensureBehaviorRisksSchema();
 
     // ── GET: ตรวจ params + session → ส่งข้อมูลสำหรับ consent UI ──
     if (req.method === 'GET') {
