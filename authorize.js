@@ -1,12 +1,5 @@
-// authorize.js — B-SSO (Behavioral Risk-Based Single Sign-On) OAuth Consent Page
-//
-// เพิ่ม scope, code_challenge, code_challenge_method ใน _oauthParams
-//   เดิม: init() ไม่ได้อ่าน PKCE params จาก URL → handleAllow() ไม่ส่ง challenge ไป POST
-//         oauth.js INSERT oauth_codes โดยไม่มี code_challenge → client ส่ง code_verifier
-//         แต่ server ไม่มี challenge ไว้ match → PKCE ถูกละเลยทั้งหมด
-//   แก้:  อ่าน + เก็บ PKCE params ใน _oauthParams, ส่งใน POST body ด้วย
-//
-// CSP-safe: no element.style assignments; show/hide via element.hidden.
+// authorize.js — B-SSO OAuth Consent Page
+// PKCE-aware authorization flow
 'use strict';
 
 let _oauthParams  = {};
