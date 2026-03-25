@@ -320,10 +320,9 @@ export default async function handler(req, res) {
                     `SELECT id, pre_login_score
                      FROM login_risks
                      WHERE id = $1 AND username = $2
-                       AND created_at > NOW() - make_interval(mins => $3)
                      ORDER BY created_at DESC
                      LIMIT 1`,
-                    [parsed, username, LOGID_TTL_MINUTES]
+                    [parsed, username]
                 );
                 if (byId.rows[0]) {
                     loginRiskId = byId.rows[0].id;
@@ -347,13 +346,12 @@ export default async function handler(req, res) {
                 }
             }
             
-            // (3) FINAL FALLBACK: หา pre-login score ล่าสุดของ username ที่ success ภายใน 30 นาที
+            // (3) FINAL FALLBACK: หา pre-login score ล่าสุดของ username ที่ success
             if (!loginRiskId) {
                 const fallbackRes = await pool.query(
                     `SELECT id, pre_login_score
                      FROM login_risks
                      WHERE username = $1 AND is_success = TRUE
-                       AND created_at > NOW() - INTERVAL '30 minutes'
                      ORDER BY created_at DESC
                      LIMIT 1`,
                     [username]
