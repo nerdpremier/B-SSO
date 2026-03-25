@@ -51,6 +51,13 @@
       ]
     },
     {
+      "source": "/collector_behavior/(.*)",
+      "headers": [
+        { "key": "Cross-Origin-Resource-Policy",      "value": "cross-origin" },
+        { "key": "Access-Control-Allow-Origin",       "value": "*" }
+      ]
+    },
+    {
       "source": "/(.*\\.html)",
       "headers": [
         { "key": "Content-Security-Policy", "value": "upgrade-insecure-requests; default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; img-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'; form-action 'self'" },
