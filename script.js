@@ -495,7 +495,7 @@ async function logout() {
 document.addEventListener('DOMContentLoaded', () => {
     if (document.getElementById('user-display')) checkAuth();
     document.getElementById('logout-btn')     ?.addEventListener('click', e=>withGuard(logout,e));
-    document.getElementById('dev-portal-btn') ?.addEventListener('click', ()=>{window.location.href='/developer';});
+    document.getElementById('client-console-btn') ?.addEventListener('click', ()=>{window.location.href='/console';});
     if (document.getElementById('login-form')) {
         const qp=new URLSearchParams(window.location.search);
         if      (qp.get('verified')==='1')          updateStatus('success','Email verified! You can now sign in.');

@@ -202,7 +202,7 @@ function requireJson(req, res) {
 // ─── Sub-handlers ─────────────────────────────────────────────
 
 /**
- * API Handler สำหรับหน้าจัดการนักพัฒนา (Developer Portal) 
+ * API Handler สำหรับ Client Console 
  * รองรับการลงทะเบียน (POST), ตรวจสอบ (GET), หมุนเวียนคีย์ (PATCH) และลบ (DELETE) แอปพลิเคชัน
  * จัดการสิทธิ์การเข้าถึงผ่าน Session Cookie ที่ดึงมาจากหน้า Portal (Same-origin)
  * @param {import('http').IncomingMessage} req - HTTP Request object
