@@ -309,7 +309,7 @@ export default async function handler(req, res) {
             try {
                 await loginClient.query('BEGIN');
                 const riskRes = await loginClient.query(
-                    `SELECT risk_level, total_mfa_attempts
+                    `SELECT risk_level, total_mfa_attempts, device
                      FROM login_risks
                      WHERE id = $1 AND username = $2
                        AND is_success = FALSE
@@ -412,8 +412,8 @@ export default async function handler(req, res) {
 
                 if ((remember === true || remember === 'true') && fingerprint) {
                     await loginClient.query(
-                        'INSERT INTO user_devices (username, fingerprint) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-                        [username, fingerprint]
+                        'INSERT INTO user_devices (username, device, fingerprint) VALUES ($1, $2, $3) ON CONFLICT (username, fingerprint) DO NOTHING',
+                        [username, riskRes.rows[0].device || 'unknown', fingerprint]
                     );
                 }
 

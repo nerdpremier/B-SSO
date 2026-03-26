@@ -362,9 +362,9 @@ async function handleAuthorize(req, res, ip) {
         if (device === 'unknown' || fingerprint === 'unknown') {
             try {
                 const existingDeviceRes = await pool.query(
-                    `SELECT device, fingerprint FROM user_devices
+                    `SELECT COALESCE(device, 'unknown') as device, fingerprint FROM user_devices
                      WHERE username = $1
-                       AND device != 'unknown'
+                       AND (device != 'unknown' OR device IS NULL)
                        AND fingerprint != 'unknown'
                      ORDER BY created_at DESC
                      LIMIT 1`,
@@ -419,9 +419,9 @@ async function handleAuthorize(req, res, ip) {
                 if (finalDevice === 'unknown' || finalFingerprint === 'unknown') {
                     try {
                         const existingRes = await client.query(
-                            `SELECT device, fingerprint FROM user_devices
+                            `SELECT COALESCE(device, 'unknown') as device, fingerprint FROM user_devices
                              WHERE username = $1
-                               AND device != 'unknown'
+                               AND (device != 'unknown' OR device IS NULL)
                                AND fingerprint != 'unknown'
                              ORDER BY created_at DESC
                              LIMIT 1`,

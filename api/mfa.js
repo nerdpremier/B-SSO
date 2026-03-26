@@ -111,7 +111,7 @@ async function handleVerifyMfa(req, res, ip) {
 
             const riskRes = await client.query(
                 `SELECT lr.mfa_code, lr.mfa_expires_at, lr.mfa_attempts,
-                        lr.total_mfa_attempts, lr.risk_level,
+                        lr.total_mfa_attempts, lr.risk_level, lr.device,
                         u.id AS user_id, u.email
                  FROM login_risks lr
                  JOIN users u ON u.username = lr.username
@@ -178,8 +178,8 @@ async function handleVerifyMfa(req, res, ip) {
 
             if ((remember === true || remember === 'true') && req.body.fingerprint) {
                 await client.query(
-                    'INSERT INTO user_devices (username, fingerprint) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-                    [username, req.body.fingerprint]
+                    'INSERT INTO user_devices (username, device, fingerprint) VALUES ($1, $2, $3) ON CONFLICT (username, fingerprint) DO NOTHING',
+                    [username, row.device || 'unknown', req.body.fingerprint]
                 );
             }
 
