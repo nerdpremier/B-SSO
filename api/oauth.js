@@ -351,11 +351,15 @@ async function handleAuthorize(req, res, ip) {
         let device = 'unknown';
         let fingerprint = 'unknown';
 
+        console.log('[DEBUG] OAuth GET params device/fingerprint:', { deviceParam, fingerprintParam });
+
         if (deviceParam && typeof deviceParam === 'string') {
             device = deviceParam.slice(0, 256);
+            console.log('[DEBUG] Using device from GET params:', device);
         }
-        if (fingerprintParam && typeof fingerprintParam === 'string' && /^[a-f0-9]{64}$/i.test(fingerprintParam)) {
+        if (fingerprintParam && typeof fingerprintParam === 'string' && /^[a-f0-9-]{32,128}$/i.test(fingerprintParam)) {
             fingerprint = fingerprintParam.slice(0, 64);
+            console.log('[DEBUG] Using fingerprint from GET params:', fingerprint);
         }
 
         // ถ้า query params ไม่มี → ดึงจาก user_devices ที่เคย register ไว้
@@ -539,11 +543,15 @@ async function handleAuthorize(req, res, ip) {
         let device = 'unknown';
         let fingerprint = 'unknown';
 
+        console.log('[DEBUG] OAuth POST body device/fingerprint:', { deviceFromBody, fingerprintFromBody });
+
         if (deviceFromBody && typeof deviceFromBody === 'string') {
             device = deviceFromBody.slice(0, 256);
+            console.log('[DEBUG] Using device from body:', device);
         }
-        if (fingerprintFromBody && typeof fingerprintFromBody === 'string' && /^[a-f0-9-]{36,64}$/i.test(fingerprintFromBody)) {
+        if (fingerprintFromBody && typeof fingerprintFromBody === 'string' && /^[a-f0-9-]{32,128}$/i.test(fingerprintFromBody)) {
             fingerprint = fingerprintFromBody.slice(0, 64);
+            console.log('[DEBUG] Using fingerprint from body:', fingerprint);
         }
 
         // If POST body doesn't have device/fingerprint, try to get from user_devices

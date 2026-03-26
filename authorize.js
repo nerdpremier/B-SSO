@@ -45,7 +45,9 @@ function getSecureFp() {
 }
 
 function getDeviceInfo() {
-  return `Screen:${screen.width}x${screen.height} | CPU:${navigator.hardwareConcurrency}`;
+  const device = `Screen:${screen.width}x${screen.height} | CPU:${navigator.hardwareConcurrency}`;
+  console.log('[DEBUG] Device info collected:', device);
+  return device;
 }
 
 async function init() {
@@ -89,6 +91,8 @@ async function init() {
     const device = getDeviceInfo();
     apiUrl.searchParams.set('fingerprint', fingerprint);
     apiUrl.searchParams.set('device', device);
+
+    console.log('[DEBUG] Sending GET with device:', device, 'fingerprint:', fingerprint);
 
     if (scope)               apiUrl.searchParams.set('scope',                 scope);
     if (codeChallenge)       apiUrl.searchParams.set('code_challenge',        codeChallenge);
@@ -163,6 +167,8 @@ async function handleAllow() {
     const device = getDeviceInfo();
     body.fingerprint = fingerprint;
     body.device = device;
+
+    console.log('[DEBUG] Sending POST with device:', device, 'fingerprint:', fingerprint);
 
     if (_oauthParams.scope) {
       body.scope = _oauthParams.scope;
