@@ -436,12 +436,44 @@ async function handleAuthorize(req, res, ip) {
                 const { medium: MEDIUM_THRESHOLD } = getCombinedConfig();
                 const level = score >= MEDIUM_THRESHOLD ? 'MEDIUM' : 'LOW';
 
+                // ตรวจสอบว่ามี entry ก่อนหน้าที่มี session_jti เดียวกันและมี device/fingerprint ที่ถูกต้องหรือไม่
+                // ถ้ามี → ใช้ค่านั้นแทน (ป้องกัน device/fingerprint = 'unknown')
+                let finalDevice = device;
+                let finalFingerprint = fingerprint;
+                if (device === 'unknown' || fingerprint === 'unknown') {
+                    try {
+                        const existingRes = await client.query(
+                            `SELECT device, fingerprint FROM login_risks
+                             WHERE username = $1 AND session_jti = $2
+                               AND device != 'unknown'
+                               AND fingerprint != 'unknown'
+                             ORDER BY created_at DESC
+                             LIMIT 1`,
+                            [decoded.username, decoded.jti]
+                        );
+                        if (existingRes.rows[0]) {
+                            finalDevice = existingRes.rows[0].device;
+                            finalFingerprint = existingRes.rows[0].fingerprint;
+                            auditLog('OAUTH_REUSED_DEVICE_FP', {
+                                username: decoded.username,
+                                sessionJti: decoded.jti,
+                                fromDevice: device,
+                                toDevice: finalDevice,
+                                fromFingerprint: fingerprint,
+                                toFingerprint: finalFingerprint
+                            });
+                        }
+                    } catch (reuseErr) {
+                        console.error('[WARN] oauth.js device/fingerprint reuse failed:', reuseErr.message);
+                    }
+                }
+
                 const insertRes = await client.query(
                     `INSERT INTO login_risks
                      (username, device, fingerprint, risk_level, pre_login_score, session_jti, is_success)
                      VALUES ($1, $2, $3, $4, $5, $6, $7)
                      RETURNING id`,
-                    [decoded.username, device, fingerprint, level, score, decoded.jti, true]
+                    [decoded.username, finalDevice, finalFingerprint, level, score, decoded.jti, true]
                 );
                 preLoginLogId = insertRes.rows[0].id;
 
