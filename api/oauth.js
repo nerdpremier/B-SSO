@@ -515,7 +515,8 @@ async function handleAuthorize(req, res, ip) {
     if (req.method === 'POST') {
         if (!requireJson(req, res)) return;
         const { client_id, redirect_uri, state, approved,
-                scope, code_challenge, code_challenge_method, pre_login_log_id } = req.body;
+                scope, code_challenge, code_challenge_method, pre_login_log_id,
+                device: deviceFromBody, fingerprint: fingerprintFromBody } = req.body;
 
         if (!client_id || typeof client_id !== 'string' || client_id.length > 128)
             return res.status(400).json({ error: 'invalid_request: missing or invalid client_id' });
@@ -533,6 +534,43 @@ async function handleAuthorize(req, res, ip) {
 
         const decoded = await verifySessionCookie(req);
         if (!decoded) return res.status(401).json({ error: 'session_expired: please sign in again' });
+
+        // Handle device and fingerprint from POST body
+        let device = 'unknown';
+        let fingerprint = 'unknown';
+
+        if (deviceFromBody && typeof deviceFromBody === 'string') {
+            device = deviceFromBody.slice(0, 256);
+        }
+        if (fingerprintFromBody && typeof fingerprintFromBody === 'string' && /^[a-f0-9-]{36,64}$/i.test(fingerprintFromBody)) {
+            fingerprint = fingerprintFromBody.slice(0, 64);
+        }
+
+        // If POST body doesn't have device/fingerprint, try to get from user_devices
+        if (device === 'unknown' || fingerprint === 'unknown') {
+            try {
+                const existingDeviceRes = await pool.query(
+                    `SELECT COALESCE(device, 'unknown') as device, fingerprint FROM user_devices
+                     WHERE username = $1
+                       AND (device != 'unknown' OR device IS NULL)
+                       AND fingerprint != 'unknown'
+                     ORDER BY created_at DESC
+                     LIMIT 1`,
+                    [decoded.username]
+                );
+                if (existingDeviceRes.rows[0]) {
+                    device = existingDeviceRes.rows[0].device;
+                    fingerprint = existingDeviceRes.rows[0].fingerprint;
+                    auditLog('OAUTH_POST_REUSED_FROM_USER_DEVICES', {
+                        username: decoded.username,
+                        device,
+                        fingerprint
+                    });
+                }
+            } catch (reuseErr) {
+                console.error('[WARN] oauth.js POST device reuse failed:', reuseErr.message);
+            }
+        }
 
         let clientRow;
         try {
@@ -567,6 +605,78 @@ async function handleAuthorize(req, res, ip) {
         const codeHash       = hashToken(code);
         const expiresAt      = new Date(Date.now() + CODE_TTL_MINUTES * 60 * 1000);
 
+        // If no pre_login_log_id, create one with device information
+        let finalPreLoginLogId = pre_login_log_id;
+        if (!finalPreLoginLogId && device !== 'unknown' && fingerprint !== 'unknown') {
+            const client = await pool.connect();
+            try {
+                await client.query('BEGIN');
+                
+                // Check if this device is known
+                const deviceRes = await client.query(
+                    `SELECT id FROM user_devices
+                     WHERE username = $1 AND fingerprint = $2`,
+                    [decoded.username, fingerprint]
+                );
+                const isKnownDevice = deviceRes.rows.length > 0;
+
+                // Calculate risk score
+                let score = 0.1;
+                if (!isKnownDevice) {
+                    score += 0.4;
+                }
+                const level = score >= 0.5 ? 'HIGH' : score >= 0.3 ? 'MEDIUM' : 'LOW';
+
+                // Create login_risks entry
+                const insertRes = await client.query(
+                    `INSERT INTO login_risks
+                     (username, device, fingerprint, risk_level, pre_login_score, session_jti, is_success)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7)
+                     RETURNING id`,
+                    [decoded.username, device, fingerprint, level, score, decoded.jti, true]
+                );
+                finalPreLoginLogId = insertRes.rows[0].id;
+
+                // Register new device if needed
+                if (!isKnownDevice) {
+                    try {
+                        await client.query(
+                            `INSERT INTO user_devices (username, device, fingerprint, created_at)
+                             VALUES ($1, $2, $3, NOW())
+                             ON CONFLICT (username, fingerprint) DO NOTHING`,
+                            [decoded.username, device, fingerprint]
+                        );
+                    } catch (colErr) {
+                        if (colErr.message?.includes('column "device"')) {
+                            await client.query(
+                                `INSERT INTO user_devices (username, fingerprint, created_at)
+                                 VALUES ($1, $2, NOW())
+                                 ON CONFLICT (username, fingerprint) DO NOTHING`,
+                                [decoded.username, fingerprint]
+                            );
+                        } else {
+                            throw colErr;
+                        }
+                    }
+                }
+
+                await client.query('COMMIT');
+                auditLog('OAUTH_POST_CREATED_LOGIN_RISK', {
+                    username: decoded.username,
+                    device,
+                    fingerprint,
+                    loginRiskId: finalPreLoginLogId,
+                    isKnownDevice
+                });
+            } catch (err) {
+                await client.query('ROLLBACK');
+                console.error('[ERROR] oauth.js POST login_risk creation:', err);
+                // Continue without login_risks if creation fails
+            } finally {
+                client.release();
+            }
+        }
+
         try {
             await pool.query(
                 `INSERT INTO oauth_codes
@@ -578,10 +688,10 @@ async function handleAuthorize(req, res, ip) {
                  code_challenge || null,
                  code_challenge ? 'S256' : null,
                  expiresAt,
-                 pre_login_log_id || null]
+                 finalPreLoginLogId || null]
             );
 
-            if (pre_login_log_id) {
+            if (finalPreLoginLogId) {
                 try {
                     const cookies = parse(req.headers.cookie || '');
                     const sessionToken = cookies.session_token;
@@ -595,9 +705,9 @@ async function handleAuthorize(req, res, ip) {
                                 `UPDATE login_risks
                                  SET session_jti = $1, is_success = TRUE
                                  WHERE id = $2 AND username = $3`,
-                                [sessionDecoded.jti, pre_login_log_id, decoded.username]
+                                [sessionDecoded.jti, finalPreLoginLogId, decoded.username]
                             );
-                            console.log(`[INFO] oauth.js: Linked session_jti=${sessionDecoded.jti} to login_risk_id=${pre_login_log_id}`);
+                            console.log(`[INFO] oauth.js: Linked session_jti=${sessionDecoded.jti} to login_risk_id=${finalPreLoginLogId}`);
                         }
                     }
                 } catch (linkErr) {
@@ -609,13 +719,13 @@ async function handleAuthorize(req, res, ip) {
             return res.status(500).json({ error: 'Internal server error' });
         }
 
-        auditLog('OAUTH_CODE_ISSUED', { username: decoded.username, clientId: client_id, scope: effectiveScope, ip, preLoginLogId: pre_login_log_id });
+        auditLog('OAUTH_CODE_ISSUED', { username: decoded.username, clientId: client_id, scope: effectiveScope, ip, preLoginLogId: finalPreLoginLogId });
 
         const redirectUrl = new URL(redirect_uri);
         redirectUrl.searchParams.set('code', code);
         redirectUrl.searchParams.set('state', state);
-        if (pre_login_log_id) {
-            redirectUrl.searchParams.set('pre_login_log_id', pre_login_log_id);
+        if (finalPreLoginLogId) {
+            redirectUrl.searchParams.set('pre_login_log_id', finalPreLoginLogId);
         }
         return res.status(200).json({ redirect_url: redirectUrl.toString() });
     }

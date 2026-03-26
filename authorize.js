@@ -31,6 +31,23 @@ function showError(msg) {
   $id('error-msg').textContent  = msg;
 }
 
+function getSecureFp() {
+  try {
+    let id = localStorage.getItem('_device_fp');
+    if (!id) { id = crypto.randomUUID(); localStorage.setItem('_device_fp', id); }
+    return id;
+  } catch {
+    try {
+      const h = [screen.width+'x'+screen.height, navigator.hardwareConcurrency||0, navigator.language||''].join('|');
+      return btoa(encodeURIComponent(h)).substring(0, 128);
+    } catch { return crypto.randomUUID(); }
+  }
+}
+
+function getDeviceInfo() {
+  return `Screen:${screen.width}x${screen.height} | CPU:${navigator.hardwareConcurrency}`;
+}
+
 async function init() {
   document.body.classList.remove('auth-pending');
   $id('main-card').hidden = false;
@@ -66,6 +83,12 @@ async function init() {
     apiUrl.searchParams.set('redirect_uri',  redirectUri);
     apiUrl.searchParams.set('response_type', responseType);
     apiUrl.searchParams.set('state',         state);
+
+    // Add device and fingerprint information
+    const fingerprint = getSecureFp();
+    const device = getDeviceInfo();
+    apiUrl.searchParams.set('fingerprint', fingerprint);
+    apiUrl.searchParams.set('device', device);
 
     if (scope)               apiUrl.searchParams.set('scope',                 scope);
     if (codeChallenge)       apiUrl.searchParams.set('code_challenge',        codeChallenge);
@@ -134,6 +157,12 @@ async function handleAllow() {
       state:        _oauthParams.state,
       approved:     true,
     };
+
+    // Add device and fingerprint information
+    const fingerprint = getSecureFp();
+    const device = getDeviceInfo();
+    body.fingerprint = fingerprint;
+    body.device = device;
 
     if (_oauthParams.scope) {
       body.scope = _oauthParams.scope;
