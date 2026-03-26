@@ -92,8 +92,8 @@ export default async function handler(req, res) {
         let decoded;
         try {
             decoded = jwt.verify(token, process.env.JWT_SECRET, {
-                issuer:   'auth-service',
-                audience: 'api'
+                issuer:   process.env.BASE_URL,
+                audience: 'b-sso-api'
             });
         } catch {
             decoded = null;

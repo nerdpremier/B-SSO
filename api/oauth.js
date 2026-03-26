@@ -50,7 +50,7 @@ function verifyBearerSession(req) {
     const token = auth.slice(7);
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET, {
-            issuer: 'auth-service', audience: 'api'
+            issuer: process.env.BASE_URL, audience: 'b-sso-api'
         });
         if (!decoded.jti) return null;
         if (!decoded.username || typeof decoded.username !== 'string' ||
@@ -69,7 +69,7 @@ async function verifySessionCookie(req) {
     let decoded;
     try {
         decoded = jwt.verify(token, process.env.JWT_SECRET, {
-            issuer: 'auth-service', audience: 'api'
+            issuer: process.env.BASE_URL, audience: 'b-sso-api'
         });
     } catch { return null; }
 
@@ -444,7 +444,7 @@ async function handleAuthorize(req, res, ip) {
                     const sessionToken = cookies.session_token;
                     if (sessionToken) {
                         const sessionDecoded = jwt.verify(sessionToken, process.env.JWT_SECRET, {
-                            issuer: 'auth-service', audience: 'api'
+                            issuer: process.env.BASE_URL, audience: 'b-sso-api'
                         });
 
                         if (sessionDecoded?.jti) {
