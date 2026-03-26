@@ -390,16 +390,7 @@ async function handleAuthorize(req, res, ip) {
         try {
             await client.query('BEGIN');
 
-            // 1. ตรวจสอบว่า device นี้เคย register สำหรับ user นี้หรือไม่
-            const deviceRes = await client.query(
-                `SELECT id FROM user_devices
-                 WHERE username = $1 AND fingerprint = $2`,
-                [decoded.username, fingerprint]
-            );
-
-            const isKnownDevice = deviceRes.rows.length > 0;
-
-            // 2. ถ้า client ส่ง pre_login_log_id มา → ใช้ค่านั้น (ลอง validate ก่อน)
+            // 1. ถ้า client ส่ง pre_login_log_id มา → ใช้ค่านั้น (ลอง validate ก่อน)
             if (pre_login_log_id && /^\d+$/.test(pre_login_log_id)) {
                 try {
                     const riskRes = await client.query(
