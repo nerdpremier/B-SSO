@@ -347,7 +347,6 @@ async function handleAuthorize(req, res, ip) {
             return res.status(401).json({ error: 'unauthenticated', app_name: appName });
         }
 
-        // อ่าน device/fingerprint จาก query params ก่อน (cross-origin cookies ไม่ reliable)
         let device = 'unknown';
         let fingerprint = 'unknown';
 
@@ -362,7 +361,6 @@ async function handleAuthorize(req, res, ip) {
             console.log('[DEBUG] Using fingerprint from GET params:', fingerprint);
         }
 
-        // ถ้า query params ไม่มี → ดึงจาก user_devices ที่เคย register ไว้
         if (device === 'unknown' || fingerprint === 'unknown') {
             try {
                 const existingDeviceRes = await pool.query(
@@ -384,7 +382,6 @@ async function handleAuthorize(req, res, ip) {
                     });
                 }
             } catch (e) {
-                // ignore
             }
         }
 
@@ -394,7 +391,6 @@ async function handleAuthorize(req, res, ip) {
         try {
             await client.query('BEGIN');
 
-            // 1. ถ้า client ส่ง pre_login_log_id มา → ใช้ค่านั้น (ลอง validate ก่อน)
             if (pre_login_log_id && /^\d+$/.test(pre_login_log_id)) {
                 try {
                     const riskRes = await client.query(
@@ -415,9 +411,7 @@ async function handleAuthorize(req, res, ip) {
                 }
             }
 
-            // 3. ถ้ายังไม่มี preLoginLogId → สร้างใหม่
             if (!preLoginLogId) {
-                // ดึง device/fingerprint จาก user_devices ถ้า query params ไม่มี
                 let finalDevice = device;
                 let finalFingerprint = fingerprint;
                 if (finalDevice === 'unknown' || finalFingerprint === 'unknown') {
@@ -441,11 +435,9 @@ async function handleAuthorize(req, res, ip) {
                             });
                         }
                     } catch (e) {
-                        // ignore
                     }
                 }
 
-                // ตรวจสอบว่า device นี้เคย register หรือไม่ (ใช้ finalFingerprint)
                 const deviceRes = await client.query(
                     `SELECT id FROM user_devices
                      WHERE username = $1 AND fingerprint = $2`,
@@ -453,9 +445,6 @@ async function handleAuthorize(req, res, ip) {
                 );
                 const isKnownDevice = deviceRes.rows.length > 0;
 
-                // คำนวณ risk score
-                // base: 0.1
-                // device ใหม่: +0.4
                 let score = 0.1;
                 if (!isKnownDevice) {
                     score += 0.4;
@@ -473,7 +462,6 @@ async function handleAuthorize(req, res, ip) {
                 );
                 preLoginLogId = insertRes.rows[0].id;
 
-                // ถ้าเป็น device ใหม่ → register ไว้ (ใช้ finalDevice/finalFingerprint)
                 if (!isKnownDevice) {
                     try {
                         await client.query(
@@ -483,7 +471,6 @@ async function handleAuthorize(req, res, ip) {
                             [decoded.username, finalDevice, finalFingerprint]
                         );
                     } catch (colErr) {
-                        // ถ้า error เพราะไม่มีคอลัมน์ device → ใช้ INSERT แบบเก่า
                         if (colErr.message?.includes('column "device"')) {
                             await client.query(
                                 `INSERT INTO user_devices (username, fingerprint, created_at)
@@ -539,7 +526,6 @@ async function handleAuthorize(req, res, ip) {
         const decoded = await verifySessionCookie(req);
         if (!decoded) return res.status(401).json({ error: 'session_expired: please sign in again' });
 
-        // Handle device and fingerprint from POST body
         let device = 'unknown';
         let fingerprint = 'unknown';
 
@@ -554,7 +540,6 @@ async function handleAuthorize(req, res, ip) {
             console.log('[DEBUG] Using fingerprint from body:', fingerprint);
         }
 
-        // If POST body doesn't have device/fingerprint, try to get from user_devices
         if (device === 'unknown' || fingerprint === 'unknown') {
             try {
                 const existingDeviceRes = await pool.query(
@@ -613,14 +598,12 @@ async function handleAuthorize(req, res, ip) {
         const codeHash       = hashToken(code);
         const expiresAt      = new Date(Date.now() + CODE_TTL_MINUTES * 60 * 1000);
 
-        // If no pre_login_log_id, create one with device information
         let finalPreLoginLogId = pre_login_log_id;
         if (!finalPreLoginLogId && device !== 'unknown' && fingerprint !== 'unknown') {
             const client = await pool.connect();
             try {
                 await client.query('BEGIN');
                 
-                // Check if this device is known
                 const deviceRes = await client.query(
                     `SELECT id FROM user_devices
                      WHERE username = $1 AND fingerprint = $2`,
@@ -628,14 +611,12 @@ async function handleAuthorize(req, res, ip) {
                 );
                 const isKnownDevice = deviceRes.rows.length > 0;
 
-                // Calculate risk score
                 let score = 0.1;
                 if (!isKnownDevice) {
                     score += 0.4;
                 }
                 const level = score >= 0.5 ? 'HIGH' : score >= 0.3 ? 'MEDIUM' : 'LOW';
 
-                // Create login_risks entry
                 const insertRes = await client.query(
                     `INSERT INTO login_risks
                      (username, device, fingerprint, risk_level, pre_login_score, session_jti, is_success)
@@ -645,7 +626,6 @@ async function handleAuthorize(req, res, ip) {
                 );
                 finalPreLoginLogId = insertRes.rows[0].id;
 
-                // Register new device if needed
                 if (!isKnownDevice) {
                     try {
                         await client.query(
@@ -679,7 +659,6 @@ async function handleAuthorize(req, res, ip) {
             } catch (err) {
                 await client.query('ROLLBACK');
                 console.error('[ERROR] oauth.js POST login_risk creation:', err);
-                // Continue without login_risks if creation fails
             } finally {
                 client.release();
             }
@@ -855,7 +834,6 @@ async function handleToken(req, res, ip) {
 
             const codePreLoginLogId = codeRow.pre_login_log_id || null;
 
-            // Fetch pre_login_score from login_risks
             let preLoginScore = null;
             if (codePreLoginLogId) {
                 const scoreRes = await tokenClient.query(
@@ -1011,7 +989,6 @@ async function handleToken(req, res, ip) {
             const accessHash  = hashToken(accessToken);
             const accessExp   = new Date(Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000);
 
-            // Fetch pre_login_score for refresh
             let refreshPreLoginScore = 0.1;
             try {
                 const preLoginRes = await tokenClient.query(

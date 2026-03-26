@@ -145,7 +145,6 @@
     }
 
     async function flush() {
-      // Always send data, even if no events - this captures inactivity patterns
       const batch = events;
       events = [];
 

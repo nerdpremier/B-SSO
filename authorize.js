@@ -86,7 +86,6 @@ async function init() {
     apiUrl.searchParams.set('response_type', responseType);
     apiUrl.searchParams.set('state',         state);
 
-    // Add device and fingerprint information
     const fingerprint = getSecureFp();
     const device = getDeviceInfo();
     apiUrl.searchParams.set('fingerprint', fingerprint);
@@ -162,7 +161,6 @@ async function handleAllow() {
       approved:     true,
     };
 
-    // Add device and fingerprint information
     const fingerprint = getSecureFp();
     const device = getDeviceInfo();
     body.fingerprint = fingerprint;
