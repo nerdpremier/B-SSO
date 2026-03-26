@@ -348,7 +348,6 @@ async function handleAuthorize(req, res, ip) {
         }
 
         // อ่าน device/fingerprint จาก query params ก่อน (cross-origin cookies ไม่ reliable)
-        // ถ้าไม่มีค่อย fallback ไป cookies
         let device = 'unknown';
         let fingerprint = 'unknown';
 
@@ -359,30 +358,29 @@ async function handleAuthorize(req, res, ip) {
             fingerprint = fingerprintParam.slice(0, 64);
         }
 
-        // DEBUG: log ค่าที่ได้
-        auditLog('OAUTH_DEVICE_FP_DEBUG', {
-            deviceParam,
-            fingerprintParam,
-            deviceResult: device,
-            fingerprintResult: fingerprint,
-            hasDeviceParam: !!deviceParam,
-            hasFingerprintParam: !!fingerprintParam,
-            fpParamLength: fingerprintParam?.length,
-            fpParamType: typeof fingerprintParam
-        });
-
-        // Fallback ไป cookies ถ้า query params ไม่มี
+        // ถ้า query params ไม่มี → ดึงจาก user_devices ที่เคย register ไว้
         if (device === 'unknown' || fingerprint === 'unknown') {
-            const cookies = parse(req.headers.cookie || '');
             try {
-                device = cookies.b_device ? decodeURIComponent(cookies.b_device).slice(0, 256) : device;
+                const existingDeviceRes = await pool.query(
+                    `SELECT device, fingerprint FROM user_devices
+                     WHERE username = $1
+                       AND device != 'unknown'
+                       AND fingerprint != 'unknown'
+                     ORDER BY created_at DESC
+                     LIMIT 1`,
+                    [decoded.username]
+                );
+                if (existingDeviceRes.rows[0]) {
+                    device = existingDeviceRes.rows[0].device;
+                    fingerprint = existingDeviceRes.rows[0].fingerprint;
+                    auditLog('OAUTH_REUSED_FROM_USER_DEVICES', {
+                        username: decoded.username,
+                        device,
+                        fingerprint
+                    });
+                }
             } catch (e) {
-                device = String(cookies.b_device || device).slice(0, 256);
-            }
-            try {
-                fingerprint = cookies.b_fp ? decodeURIComponent(cookies.b_fp).slice(0, 64) : fingerprint;
-            } catch (e) {
-                fingerprint = String(cookies.b_fp || fingerprint).slice(0, 64);
+                // ignore
             }
         }
 
