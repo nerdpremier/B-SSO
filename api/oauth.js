@@ -594,11 +594,23 @@ async function handleToken(req, res, ip) {
 
             const codePreLoginLogId = codeRow.pre_login_log_id || null;
 
+            // Fetch pre_login_score from login_risks
+            let preLoginScore = null;
+            if (codePreLoginLogId) {
+                const scoreRes = await tokenClient.query(
+                    `SELECT pre_login_score FROM login_risks WHERE id = $1`,
+                    [codePreLoginLogId]
+                );
+                if (scoreRes.rows[0]) {
+                    preLoginScore = scoreRes.rows[0].pre_login_score;
+                }
+            }
+
             const accessResult = await tokenClient.query(
-                `INSERT INTO oauth_tokens (token_hash, token_type, client_id, username, scope, expires_at, pre_login_log_id)
-                 VALUES ($1, 'access', $2, $3, $4, $5, $6)
+                `INSERT INTO oauth_tokens (token_hash, token_type, client_id, username, scope, expires_at, pre_login_log_id, pre_login_score)
+                 VALUES ($1, 'access', $2, $3, $4, $5, $6, $7)
                  RETURNING id`,
-                [accessHash, client_id, codeRow.username, scope, accessExp, codePreLoginLogId]
+                [accessHash, client_id, codeRow.username, scope, accessExp, codePreLoginLogId, preLoginScore]
             );
             const accessTokenId = accessResult.rows[0].id;
             auditLog('OAUTH_TOKEN_PRE_LOGIN_LINKED', { accessTokenId, preLoginLogId: codePreLoginLogId });
@@ -738,14 +750,8 @@ async function handleToken(req, res, ip) {
             const accessHash  = hashToken(accessToken);
             const accessExp   = new Date(Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000);
 
-            const newAccessResult = await tokenClient.query(
-                `INSERT INTO oauth_tokens (token_hash, token_type, client_id, username, scope, expires_at, risk_level, step_up_required)
-                 VALUES ($1, 'access', $2, $3, $4, $5, $6, $7)
-                 RETURNING id`,
-                [accessHash, client_id, rt.username, scope, accessExp, currentRiskLevel, stepUpRequired]
-            );
-            const newAccessTokenId = newAccessResult.rows[0].id;
-
+            // Fetch pre_login_score for refresh
+            let refreshPreLoginScore = 0.1;
             try {
                 const preLoginRes = await tokenClient.query(
                     `SELECT id, pre_login_score
@@ -756,9 +762,18 @@ async function handleToken(req, res, ip) {
                      LIMIT 1`,
                     [rt.username]
                 );
+                refreshPreLoginScore = preLoginRes.rows[0]?.pre_login_score || 0.1;
+            } catch { }
 
-                const preLoginScore = preLoginRes.rows[0]?.pre_login_score || 0.1;
+            const newAccessResult = await tokenClient.query(
+                `INSERT INTO oauth_tokens (token_hash, token_type, client_id, username, scope, expires_at, risk_level, step_up_required, pre_login_score)
+                 VALUES ($1, 'access', $2, $3, $4, $5, $6, $7, $8)
+                 RETURNING id`,
+                [accessHash, client_id, rt.username, scope, accessExp, currentRiskLevel, stepUpRequired, refreshPreLoginScore]
+            );
+            const newAccessTokenId = newAccessResult.rows[0].id;
 
+            try {
                 await tokenClient.query(
                     `INSERT INTO login_risks
                      (username, device, fingerprint, risk_level, pre_login_score, session_jti, is_success)

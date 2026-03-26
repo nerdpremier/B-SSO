@@ -204,7 +204,8 @@ CREATE TABLE IF NOT EXISTS oauth_tokens (
     scope       TEXT[]           NOT NULL,
     expires_at  TIMESTAMPTZ      NOT NULL,
     revoked_at  TIMESTAMPTZ      NULL,
-    created_at  TIMESTAMPTZ      NOT NULL DEFAULT NOW()
+    created_at  TIMESTAMPTZ      NOT NULL DEFAULT NOW(),
+    pre_login_score DOUBLE PRECISION  -- Pre-login risk score from login_risks
 );
 
 CREATE INDEX IF NOT EXISTS idx_oauth_tokens_client_user
