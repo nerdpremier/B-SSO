@@ -1,31 +1,3 @@
-// ============================================================
-// Post‑Login Behavior Proxy
-//
-// รับข้อมูล behavior จากเว็บลูกค้า (ผ่าน browser → SSO)
-// แล้ว proxy ต่อไปยัง risk engine ที่ deploy บน Railway
-//
-// Contract ฝั่ง frontend (เว็บลูกค้า):
-//   - เรียกทุก ๆ 15 วินาทีขณะ user ยังมี session อยู่
-//   - ส่งข้อมูลเป็น JSON:
-//       {
-//         events: [ ... ],          // array ของ event objects (any structure)
-//         page:   string,           // optional: path/URL ปัจจุบัน
-//         meta:   { ... }           // optional: userAgent ฯลฯ
-//       }
-//
-// Contract กับ Railway engine:
-//   - POST ไปที่ process.env.RISK_ENGINE_URL (แนะนำให้ชี้ไปที่ /score)
-//     ด้วย JSON ของ BehaviorPayload
-//
-//   - engine ต้องตอบเป็น JSON:
-//       { normalized: number, raw_score?: number }
-//
-//   - การตัดสิน action (low/medium/revoke) ทำที่ SSO จาก combined score เท่านั้น
-//
-//   - ถ้า engine ล่ม / timeout: เรา fail‑open เป็น action: 'low'
-//     เพื่อไม่ล็อก user ทั้งระบบเพราะปัญหาภายใน engine
-// ============================================================
-
 import '../startup-check.js';
 import jwt                 from 'jsonwebtoken';
 import crypto              from 'crypto';
@@ -46,23 +18,10 @@ const ENGINE_URL        = process.env.RISK_ENGINE_URL;
 const ENGINE_API_KEY    = process.env.RISK_ENGINE_API_KEY;
 const RISK_SHARED_SECRET = process.env.RISK_ENGINE_SHARED_SECRET;
 
-/**
- * คำนวณค่า hash ของ token ด้วยอัลกอริทึม SHA-256 เพื่อความปลอดภัยในการตรวจสอบ
- * @param {string} token - ข้อมูล token ที่ต้องการนำมา hash
- * @returns {string} ค่า hash ในรูปแบบเลขฐานสิบหก (hex string)
- */
 function hashToken(token) {
     return crypto.createHash('sha256').update(token).digest('hex');
 }
 
-/**
- * สร้าง digital signature สำหรับยืนยันตัวตนกับระบบ Risk Engine ภายนอก
- * โดยใช้ HMAC-SHA256 กับ timestamp, nonce และ hash ของข้อมูล body
- * @param {string} timestamp - เวลาที่ส่ง request (ISO string)
- * @param {string} nonce - ตัวเลขสุ่มแบบ UUID ป้องกัน Replay Attack
- * @param {string} body - ข้อมูลพฤติกรรมในรูปแบบ JSON string
- * @returns {string|null} ค่า signature ในรูปแบบ base64url หรือ null หากไม่ได้ตั้งค่า Secret
- */
 function signForRiskEngine(timestamp, nonce, body) {
     if (!RISK_SHARED_SECRET) return null;
     const bodyHash = crypto.createHash('sha256').update(body).digest('hex');
@@ -70,17 +29,6 @@ function signForRiskEngine(timestamp, nonce, body) {
     return crypto.createHmac('sha256', RISK_SHARED_SECRET).update(base).digest('base64url');
 }
 
-/**
- * API Handler หลักสำหรับรับข้อมูลพฤติกรรมการใช้งาน (Behavioral Data) ของผู้ใช้
- * หน้าที่:
- * 1. ตรวจสอบการ Authentication ของผู้ใช้ (รองรับทั้ง Session Cookie และ OAuth Bearer)
- * 2. คัดกรองและปรับรูปแบบข้อมูลคุณลักษณะ (Feature Extraction) ให้อยู่ในช่วง 0-1
- * 3. ส่งต่อข้อมูลไปยังระบบ Risk Engine เพื่อประเมินคะแนนความเสี่ยง (Behavior Score)
- * 4. นำคะแนนมาประมวลผลร่วมกับความเสี่ยงเริ่มต้น (Pre-login Score) เพื่อตัดสินใจ Action
- * @param {import('http').IncomingMessage} req - HTTP Request object
- * @param {import('http').ServerResponse} res - HTTP Response object
- * @returns {Promise<void>}
- */
 export default async function handler(req, res) {
     if (req.method !== 'POST') return res.status(405).send();
 
@@ -105,7 +53,7 @@ export default async function handler(req, res) {
     try {
         if (await checkRateLimit(`ip:${ip}:behavior`, 60, 60_000)) {
             auditLog('BEHAVIOR_RATE_LIMIT', { ip });
-            // ให้ frontend ทราบว่า request นี้ถูก drop แต่ไม่บังคับ logout
+
             return res.status(429).json({ action: 'low', message: 'Too many behavior events' });
         }
     } catch (rlErr) {
@@ -118,10 +66,9 @@ export default async function handler(req, res) {
 
     let username = null;
     let sessionJti = null;
-    let authType = null; // 'session_cookie' | 'oauth_bearer'
-    let tokenPreLoginLogId = null; // pre_login_log_id จาก oauth_tokens (server-side, ไม่ต้องพึ่ง cookie)
+    let authType = null; 
+    let tokenPreLoginLogId = null; 
 
-    // ── Auth path A: same-origin SSO session cookie (legacy) ──
     if (sessionCookieToken) {
         let decoded;
         try {
@@ -139,7 +86,7 @@ export default async function handler(req, res) {
         sessionJti = decoded.jti;
         authType = 'session_cookie';
     } else if (authHeader?.startsWith?.('Bearer ')) {
-        // ── Auth path B: OAuth access_token (opaque) from client app ──
+
         const token = authHeader.slice(7).trim();
         if (!token || token.length > 128) {
             res.setHeader('WWW-Authenticate', 'Bearer realm="oauth", error="invalid_token"');
@@ -184,7 +131,7 @@ export default async function handler(req, res) {
     }
 
     await ensureBehaviorRisksSchema();
-    await ensureStepupChallengesSchema(); // SECURITY FIX: Ensure step-up table exists for OAuth
+    await ensureStepupChallengesSchema(); 
 
     const { events, page, meta, features } = req.body;
 
@@ -194,12 +141,6 @@ export default async function handler(req, res) {
 
     const safeFeatures = features && typeof features === 'object' ? features : {};
 
-    /**
-     * ฟังก์ชันสำหรับจำกัดค่าตัวเลขให้อยู่ในช่วง 0 ถึง 1 เท่านั้น
-     * ป้องกันไม่ให้ค่า feature มีขนาดเกินขอบเขตที่โมเดลของ Risk Engine คาดหวัง
-     * @param {number} x - ค่าตัวเลขที่ต้องการจำกัดขอบเขต
-     * @returns {number} ค่าตัวเลขที่ถูกจำกัดให้อยู่ระหว่าง 0 ถึง 1
-     */
     function clamp01(x) {
         if (!Number.isFinite(x)) return 0;
         if (x < 0) return 0;
@@ -207,13 +148,12 @@ export default async function handler(req, res) {
         return x;
     }
 
-    // map continuous features จาก collector → Isolation Forest feature vector
     const idleRatio           = clamp01(Number(safeFeatures.idle_ratio || 0));
     const interactionDensity  = Number(safeFeatures.interaction_density || 0);
-    const normDensity         = clamp01(interactionDensity / 5); // สมมติมากกว่า 5 events/s ถือว่าสูงสุด
+    const normDensity         = clamp01(interactionDensity / 5); 
 
     const avgMouseSpeed       = Number(safeFeatures.avg_mouse_speed || 0);
-    const mouseSpeedNorm      = clamp01(avgMouseSpeed / 2000);   // ปรับตามค่าที่พบจริง
+    const mouseSpeedNorm      = clamp01(avgMouseSpeed / 2000);   
     const mouseDirChangeRate  = clamp01(Number(safeFeatures.mouse_dir_change_rate || 0));
 
     const avgClickIntervalMs  = Number(safeFeatures.avg_click_interval_ms || 0);
@@ -230,7 +170,6 @@ export default async function handler(req, res) {
     const scrollDirChangeRate = clamp01(Number(safeFeatures.scroll_dir_change_rate || 0));
     const scrollDistNorm      = clamp01(avgScrollAbsDy / 2000);
 
-    // แปลงเป็น BehaviorPayload ของ CARS-ENGINE (FastAPI)
     const behaviorPayload = {
         mouse: {
             m: mouseSpeedNorm,
@@ -252,7 +191,7 @@ export default async function handler(req, res) {
             density:    normDensity,
             idle_ratio: idleRatio,
         },
-        // metadata เพิ่มเติม (FastAPI จะเพิกเฉย field ที่ไม่ได้อยู่ใน model)
+
         username,
         session_jti: sessionJti,
         ip,
@@ -292,7 +231,7 @@ export default async function handler(req, res) {
         if (!engineRes.ok) {
             console.error('[WARN] behavior.js: engine responded with', engineRes.status);
             auditLog('BEHAVIOR_ENGINE_ERROR', { status: engineRes.status, username, ip });
-            // fail‑open
+
             return res.status(200).json({ action: 'low' });
         }
 
@@ -314,12 +253,11 @@ export default async function handler(req, res) {
 
         const preLoginLogId = tokenPreLoginLogId || req.body?.pre_login_log_id;
 
-        // พยายามดึง pre-login score ถ้ามี
         let loginRiskId = null;
         auditLog('TRACE_CORRELATION_START', { username, sessionJti, preLoginLogId });
-        
+
         try {
-            // (1B) ถ้ามี pre_login_log_id จากเว็บลูกค้า → ใช้อันนี้ก่อน
+
             if (preLoginLogId) {
                 const parsed = Number(preLoginLogId);
                 auditLog('TRACE_CORRELATION_STEP', { step: '1B_ID', parsedId: parsed });
@@ -342,8 +280,7 @@ export default async function handler(req, res) {
                     auditLog('TRACE_CORRELATION_ERROR', { step: '1B_ID', message: 'Invalid ID format', value: preLoginLogId });
                 }
             }
-            
-            // (2) ถ้าไม่เจอจาก ID ให้ลองหาด้วย session_jti
+
             if (!loginRiskId && sessionJti) {
                 auditLog('TRACE_CORRELATION_STEP', { step: '2_JTI', sessionJti });
                 const preRes = await pool.query(
@@ -362,8 +299,7 @@ export default async function handler(req, res) {
                     auditLog('TRACE_CORRELATION_MISS', { step: '2_JTI', sessionJti });
                 }
             }
-            
-            // (3) FINAL FALLBACK: หา pre-login score ล่าสุดของ username ที่ success
+
             if (!loginRiskId) {
                 auditLog('TRACE_CORRELATION_STEP', { step: '3_FALLBACK', username });
                 const fallbackRes = await pool.query(
@@ -388,12 +324,10 @@ export default async function handler(req, res) {
 
         auditLog('TRACE_CORRELATION_END', { loginRiskId, behaviorScore });
 
-        // รวมคะแนนได้ก็ต่อเมื่อมี behaviorScore (จาก engine /score) และมี pre-login score
         if (behaviorScore != null && loginRiskId != null) {
             combinedScore = combineRisk(preLoginScore, behaviorScore);
             combinedAction = actionFromCombinedScore(combinedScore);
-            
-            // ── Escalation Logic: ถ้าโดน Medium ครบ 3 ครั้งใน session นี้ ให้ครั้งถัดไปเป็น Revoke ทันที ──
+
             if (combinedAction === 'medium' && sessionJti) {
                 try {
                     const mediumCountRes = await pool.query(
@@ -406,7 +340,7 @@ export default async function handler(req, res) {
                         [username, sessionJti]
                     );
                     const mediumCount = mediumCountRes.rows[0]?.cnt || 0;
-                    
+
                     if (mediumCount >= 3) {
                         combinedAction = 'revoke';
                     }
@@ -415,13 +349,11 @@ export default async function handler(req, res) {
                 }
             }
         } else {
-            // ถ้ายังรวมไม่ได้ ให้ fail-open เป็น low
+
             combinedScore = null;
             combinedAction = 'low';
         }
 
-        // เก็บ post-login score แยกตาราง "เสมอ" (ทั้ง session_cookie และ oauth_bearer)
-        // เพื่อให้เห็นว่า SSO ได้รับ behavior แล้ว แม้ไม่มี pre-login record ให้ combine
         try {
             await pool.query(
                 `INSERT INTO behavior_risks
@@ -433,7 +365,6 @@ export default async function handler(req, res) {
             console.error('[WARN] behavior.js behavior_risks insert failed:', insErr.message);
         }
 
-        // อัปเดตสรุปกลับไปที่ login_risks เฉพาะเมื่อหา record เจอ
         if (loginRiskId != null) {
             try {
                 await pool.query(
@@ -459,14 +390,13 @@ export default async function handler(req, res) {
             has_combined_score: combinedScore != null,
         });
 
-        // ถ้า combined ตัดสินใจ REVOKE → บันทึกลง revoked_tokens (สำหรับ session) หรือ oauth_tokens (สำหรับ bearer)
         if (combinedAction === 'revoke') {
             if (authType === 'session_cookie') {
                 let exp = null;
                 try {
                     const decodedUnsafe = jwt.decode(sessionCookieToken);
                     exp = decodedUnsafe && typeof decodedUnsafe.exp === 'number' ? decodedUnsafe.exp : null;
-                } catch { /* ignore */ }
+                } catch {  }
                 if (sessionJti && exp) {
                     try {
                         const expiresAt = new Date(exp * 1000).toISOString();
@@ -480,7 +410,7 @@ export default async function handler(req, res) {
                 }
             } else if (authType === 'oauth_bearer' && sessionJti) {
                 try {
-                    // sessionJti is `oauth:${row.id}`
+
                     const oauthTokenId = sessionJti.split(':')[1];
                     if (oauthTokenId) {
                         await pool.query(
@@ -494,19 +424,16 @@ export default async function handler(req, res) {
             }
         }
 
-        // SECURITY FIX: For OAuth tokens with MEDIUM action, create step-up challenge
-        // This ensures automatic MFA trigger without relying on explicit client implementation
         if (combinedAction === 'medium' && authType === 'oauth_bearer') {
             try {
-                // Create step-up challenge for OAuth token
+
                 const stepupId = crypto.randomUUID();
                 const stepupCode = crypto.randomInt(100000, 1000000).toString();
 
-                // SECURITY FIX: Require MFA_PEPPER - no hardcoded fallback
                 const pepper = process.env.MFA_PEPPER;
                 if (!pepper) {
                     console.error('[FATAL] MFA_PEPPER environment variable not set');
-                    // Fail securely - don't create challenge without proper pepper
+
                     return res.status(500).json({
                         action: 'revoke',
                         reason: 'security_configuration_error'
@@ -523,7 +450,6 @@ export default async function handler(req, res) {
                     [stepupId, username, sessionJti, codeHash]
                 );
 
-                // Update OAuth token to require step-up
                 if (sessionJti) {
                     const oauthTokenId = sessionJti.split(':')[1];
                     if (oauthTokenId) {
@@ -542,18 +468,16 @@ export default async function handler(req, res) {
                     combinedScore
                 });
 
-                // Return step_up action instead of just 'medium'
                 return res.status(200).json({
                     action: 'step_up_required',
                     request_id: requestId,
                     stepup_id: stepupId,
-                    expires_in: 300, // 5 minutes
+                    expires_in: 300, 
                     reason: 'medium_risk_behavior_detected'
                 });
             } catch (stepupErr) {
                 console.error('[WARN] behavior.js auto step-up creation failed:', stepupErr.message);
-                // SECURITY FIX: Degrade gracefully instead of auto-revoke
-                // Log security alert but allow request to prevent false positives
+
                 auditLog('OAUTH_STEP_UP_CREATION_FAILED_SECURITY_ALERT', {
                     username,
                     ip,
@@ -561,8 +485,7 @@ export default async function handler(req, res) {
                     combinedScore,
                     error: stepupErr.message
                 });
-                // Return medium action instead of revoke - still enforce via step_up_required flag
-                // The oauth_tokens.step_up_required flag should already be set if possible
+
                 return res.status(200).json({
                     action: 'medium',
                     request_id: requestId,
@@ -574,7 +497,7 @@ export default async function handler(req, res) {
         return res.status(200).json({ action: combinedAction, request_id: requestId });
     } catch (err) {
         console.error('[ERROR] behavior.js engine call failed:', err.message);
-        // fail‑open: ไม่ทำให้ user หลุดออกเพราะ engine down
+
         return res.status(200).json({ action: 'low', request_id: requestId });
     }
 }

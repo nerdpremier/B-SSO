@@ -1,8 +1,3 @@
-// ============================================================
-// Password Reset Request
-// ทุก response เกี่ยวกับ email คืน SUCCESS_RESPONSE เสมอ (ป้องกัน email enumeration)
-// ============================================================
-
 import '../startup-check.js';
 import { pool }              from '../lib/db.js';
 import { validateCsrfToken } from '../lib/csrf-utils.js';
@@ -21,16 +16,6 @@ const SUCCESS_RESPONSE = Object.freeze({
     message: 'If this email is registered, you will receive a password reset link shortly.'
 });
 
-/**
- * API Handler สำหรับระบบคำขอตั้งค่ารหัสผ่านใหม่ (Forgot Password)
- * ทำหน้าที่รับอีเมลจากผู้ใช้ ตรวจสอบและสร้างลิงก์สำหรับรีเซ็ตรหัสผ่าน ส่งผ่านอีเมล
- * 
- * *ข้อควรระวังด้านความปลอดภัย: ตอบกลับด้วยข้อความสำเร็จเสมอ ไม่ว่าจะมีอีเมลนั้น
- * ในระบบหรือไม่ เพื่อหลีกเลี่ยงการเปิดเผยข้อมูลแก่ผู้โจมตี (ป้องกัน Email Enumeration)
- * @param {import('http').IncomingMessage} req - HTTP Request object
- * @param {import('http').ServerResponse} res - HTTP Response object
- * @returns {Promise<void>}
- */
 export default async function handler(req, res) {
     if (req.method !== 'POST') return res.status(405).send();
 
@@ -45,7 +30,7 @@ export default async function handler(req, res) {
     }
 
     const ip = getClientIp(req);
-    // fail secure: คืน SUCCESS แทน error เพื่อป้องกัน timing-based email enumeration
+
     try {
         if (await checkRateLimit(`ip:${ip}:forgot-password`, 5, 3_600_000)) {
             auditLog('FORGOT_PASSWORD_IP_RATE_LIMIT', { ip });
@@ -73,7 +58,6 @@ export default async function handler(req, res) {
 
     const emailLower = email.toLowerCase();
 
-    // Per-email rate limit: ป้องกัน email flooding ต่อ address
     try {
         if (await checkRateLimit(`email:${emailLower}:forgot-password`, 3, 3_600_000)) {
             auditLog('FORGOT_PASSWORD_EMAIL_RATE_LIMIT', { ip });
@@ -83,7 +67,6 @@ export default async function handler(req, res) {
         console.error('[WARN] rate-limit DB error (forgot-password email), failing open:', rlErr.message);
     }
 
-    // Verify BASE_URL ก่อนสร้าง reset link
     const baseUrl = process.env.BASE_URL;
     if (!baseUrl?.startsWith('https://')) {
         console.error('[CONFIG] BASE_URL is not a valid HTTPS URL');
@@ -91,9 +74,7 @@ export default async function handler(req, res) {
     }
 
     try {
-        // rawToken: 256-bit entropy — ส่งใน email link
-        // tokenHash: SHA-256(rawToken) — เก็บใน DB
-        // ถ้า DB รั่ว attacker ยังต้องหา rawToken จาก hash (pre-image resistant)
+
         const rawToken   = crypto.randomBytes(32).toString('hex');
         const tokenHash  = crypto.createHash('sha256').update(rawToken).digest('hex');
 
@@ -107,7 +88,7 @@ export default async function handler(req, res) {
         );
 
         if (result.rowCount === 0) {
-            // email ไม่มีใน DB — คืน SUCCESS เสมอ (ป้องกัน enumeration)
+
             auditLog('FORGOT_PASSWORD_EMAIL_NOT_FOUND', { ip });
             return res.status(200).json(SUCCESS_RESPONSE);
         }
@@ -133,7 +114,7 @@ export default async function handler(req, res) {
 
     } catch (err) {
         console.error('[ERROR] forgot-password.js:', err);
-        // คืน SUCCESS แม้ error — ป้องกัน leak ว่า email นี้มีในระบบหรือไม่
+
         return res.status(200).json(SUCCESS_RESPONSE);
     }
 }

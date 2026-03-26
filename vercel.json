@@ -14,6 +14,7 @@
     { "source": "/api/csrf",        "destination": "/api/csrf.js" },
     { "source": "/api/cleanup",     "destination": "/api/logout.js" },
 
+    { "source": "/.well-known/openid-configuration", "destination": "/api/oauth.js" },
     { "source": "/api/oauth/:path*", "destination": "/api/oauth.js" },
 
     { "source": "/api/mfa",         "destination": "/api/mfa.js" },
@@ -97,6 +98,16 @@
       "headers": [
         { "key": "Content-Security-Policy", "value": "default-src 'none'" },
         { "key": "Cache-Control",           "value": "no-store" }
+      ]
+    },
+    {
+      "source": "/api/oauth/:path*",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin",  "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization" },
+        { "key": "Access-Control-Max-Age",       "value": "86400" },
+        { "key": "Cache-Control",                "value": "no-store" }
       ]
     },
     {

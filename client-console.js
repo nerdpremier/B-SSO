@@ -1,16 +1,10 @@
 'use strict';
 
-// CSP-safe: no element.style assignments; show/hide via element.hidden.
-
 let pendingDeleteId   = null;
 let pendingDeleteName = null;
 let pendingRotateId   = null;
 let pendingRotateName = null;
 
-/**
- * เข้าสู่ระบบหน้า Portal
- * ตรวจสอบความถูกต้องของ Session ก่อนโหลดหน้าข้อมูลแอปพลิเคชัน
- */
 async function init() {
   let res;
   try { res = await fetch('/api/session', { credentials: 'include' }); }
@@ -24,9 +18,6 @@ async function init() {
   loadApps();
 }
 
-/**
- * โหลดรายชื่อแอปพลิเคชันของนักพัฒนา (Client Applications) จากฐานข้อมูล
- */
 async function loadApps() {
   const list  = document.getElementById('apps-list');
   const count = document.getElementById('apps-count');
@@ -66,16 +57,13 @@ async function loadApps() {
   }
 }
 
-/**
- * จัดการสร้างแอปพลิเคชัน (Client) ใหม่อิงจากฟอร์มที่กรอกในหน้าเว็บ
- */
 async function createApp() {
   const name      = document.getElementById('input-name').value.trim();
   const uri       = document.getElementById('input-uri').value.trim();
   const btn       = document.getElementById('btn-create');
   const resultBox = document.getElementById('result-box');
 
-  resultBox.hidden = true;    // CSP-safe
+  resultBox.hidden = true;    
   clearCreateStatus();
 
   if (!name) return showCreateError('Please enter an app name.');
@@ -105,7 +93,7 @@ async function createApp() {
     if (!res.ok) { showCreateError(data.error || 'An error occurred. Please try again.'); return; }
     document.getElementById('res-client-id').textContent     = data.client_id;
     document.getElementById('res-client-secret').textContent = data.client_secret;
-    resultBox.hidden = false;   // CSP-safe: :not([hidden]) CSS makes it block
+    resultBox.hidden = false;   
     resultBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     document.getElementById('input-name').value = '';
     document.getElementById('input-uri').value  = '';
@@ -114,12 +102,11 @@ async function createApp() {
   finally { btn.disabled = false; btn.textContent = 'Create App'; }
 }
 
-// className was 'create-error' (no CSS rule). Now uses 'danger' to match CSS.
 function showCreateError(msg) {
   const el = document.getElementById('create-status');
   el.textContent = msg;
   el.className   = 'danger';
-  el.hidden      = false;    // CSP-safe
+  el.hidden      = false;    
   document.getElementById('btn-create').disabled    = false;
   document.getElementById('btn-create').textContent = 'Create App';
 }
@@ -164,7 +151,7 @@ function askDelete(clientId, appName) {
   pendingDeleteId   = clientId;
   pendingDeleteName = appName;
   document.getElementById('confirm-app-name').textContent = `"${appName}"`;
-  document.getElementById('confirm-overlay').hidden = false;  // CSP-safe: :not([hidden]) shows as flex
+  document.getElementById('confirm-overlay').hidden = false;  
 }
 function closeConfirm() {
   pendingDeleteId = null; pendingDeleteName = null;

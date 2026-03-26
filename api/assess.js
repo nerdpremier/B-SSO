@@ -1,24 +1,9 @@
-// ============================================================
-// api/assess.js — Risk Assessment
-// ทำหน้าที่ประเมินความเสี่ยงของ login attempt ก่อนที่ auth.js จะตรวจ password
-// คืน risk_level (LOW/MEDIUM/HIGH) และ logId สำหรับ session นั้น
-//
-// Flow:
-//   1. ตรวจ Content-Type + CSRF + IP rate limit
-//   2. Validate input fields
-//   3. ตรวจ per-username rate limit
-//   4. เปิด DB transaction พร้อม advisory lock ต่อ username
-//   5. คำนวณ risk score จาก fingerprint match + recent fail count
-//   6. INSERT บันทึกลง login_risks + COMMIT (ทุก level รวม HIGH)
-//   7. คืน risk_level + logId (HIGH จะ return logId: null เสมอ)
-// ============================================================
-
 import '../startup-check.js';
 import { pool }             from '../lib/db.js';
 import { checkRateLimit }   from '../lib/rate-limit.js';
 import { getClientIp }      from '../lib/ip-utils.js';
 import { validateCsrfToken } from '../lib/csrf-utils.js';
-import { ensureLoginRisksSchema } from '../lib/risk-score.js';
+import { ensureLoginRisksSchema, getCombinedConfig } from '../lib/risk-score.js';
 import { LOGID_TTL_MINUTES } from '../lib/constants.js';
 import crypto from 'crypto';
 import {
@@ -27,23 +12,10 @@ import {
     isJsonContentType, isValidBody,
 } from '../lib/response-utils.js';
 
-/**
- * คำนวณค่า hash ของ token ด้วยอัลกอริทึม SHA-256 เพื่อความปลอดภัยในการจัดเก็บและเปรียบเทียบ
- * @param {string} token - ข้อมูล token ที่ต้องการนำมา hash
- * @returns {string} ค่า hash ในรูปแบบเลขฐานสิบหก (hex string)
- */
 function hashToken(token) {
     return crypto.createHash('sha256').update(token).digest('hex');
 }
 
-/**
- * API Handler หลักสำหรับประเมินความเสี่ยง (Risk Assessment) ของการเข้าสู่ระบบ
- * ทำการตรวจสอบ request, ยืนยันข้อมูลเบื้องต้น, ประเมินคะแนนความเสี่ยงตามเงื่อนไข
- * และบันทึกผลลัพธ์ลงฐานข้อมูล
- * @param {object} req - HTTP Request object
- * @param {object} res - HTTP Response object
- * @returns {Promise<void>} 
- */
 export default async function handler(req, res) {
     if (req.method !== 'POST') return res.status(405).send();
 
@@ -53,7 +25,6 @@ export default async function handler(req, res) {
         return res.status(415).json({ error: 'Content-Type must be application/json' });
     }
 
-    // Support both same-origin CSRF-protected calls AND OAuth Bearer calls from customer apps.
     const authHeader = req.headers.authorization;
     let bearerUsername = null;
     if (authHeader?.startsWith?.('Bearer ')) {
@@ -76,7 +47,6 @@ export default async function handler(req, res) {
         }
     }
 
-    // If no valid bearer session, require CSRF (same-origin SSO flow)
     if (!bearerUsername) {
         if (!validateCsrfToken(req)) {
             return res.status(403).json({ error: 'Invalid CSRF token' });
@@ -112,7 +82,6 @@ export default async function handler(req, res) {
             return res.status(400).json({ error: 'Invalid request data' });
         }
 
-        // Bearer flow must only assess its own subject (prevent probing other usernames)
         if (bearerUsername && bearerUsername !== username) {
             return res.status(403).json({ error: 'Forbidden' });
         }
@@ -129,7 +98,6 @@ export default async function handler(req, res) {
             return res.status(400).json({ error: 'Invalid request data' });
         }
 
-        // Validate reuse_log_id if provided
         if (reuse_log_id !== undefined) {
             if (typeof reuse_log_id !== 'string' || reuse_log_id.length > 32) {
                 return res.status(400).json({ error: 'Invalid request data' });
@@ -158,7 +126,6 @@ export default async function handler(req, res) {
         try {
             await client.query('BEGIN');
 
-            // Check if we should reuse an existing logId
             if (reuse_log_id) {
                 const parsedReuseId = Number(reuse_log_id);
                 if (Number.isInteger(parsedReuseId) && parsedReuseId > 0) {
@@ -171,7 +138,7 @@ export default async function handler(req, res) {
                          FOR UPDATE`,
                         [parsedReuseId, username, LOGID_TTL_MINUTES]
                     );
-                    
+
                     if (existingRes.rows[0]) {
                         const existing = existingRes.rows[0];
                         auditLog('ASSESS_REUSE_LOGID', { username, ip, reusedId: existing.id });
@@ -183,9 +150,6 @@ export default async function handler(req, res) {
                 }
             }
 
-            // Advisory lock ต่อ username ป้องกัน TOCTOU:
-            //   ใช้ upper 64 bits ของ MD5 แทน hashtext() (int4, 32-bit)
-            //   MD5 → collision space 2^64 — practical collision-free
             await client.query(
                 `SELECT pg_advisory_xact_lock(('x' || substr(md5($1), 1, 16))::bit(64)::bigint)`,
                 [username]
@@ -208,24 +172,19 @@ export default async function handler(req, res) {
             const fp_match       = deviceRes.rows.length > 0;
             const currentAttempt = Number(countRes.rows[0].recent_fails) + 1;
 
-            // ── Scoring logic ─────────────────────────────────
-            // baseline 0.1 → +0.4 (device ใหม่) → +0.3 (fail > 3) → 1.0 (fail >= 5)
-            // SECURITY FIX: OAuth flows now require same device validation as direct login
-            // This prevents attackers from bypassing device risk checks via OAuth
             const isOAuthFlow = req.body.next &&
                                 typeof req.body.next === 'string' &&
                                 req.body.next.includes('/oauth/authorize');
 
             let score = 0.1;
-            // SECURITY FIX: Device fingerprint check applies to ALL flows including OAuth
-            // Previously OAuth bypassed device checks with score reset
-            if (!fp_match) score += 0.4; // device ใหม่ → +0.4 (applies to OAuth too)
+
+            if (!fp_match) score += 0.4; 
             if (currentAttempt > 3)  score += 0.3;
             if (currentAttempt >= 5) score  = 1.0;
 
-            const level = score >= 1.0 ? 'HIGH' : (score >= 0.5 ? 'MEDIUM' : 'LOW');
+            const { medium: MEDIUM_THRESHOLD } = getCombinedConfig();
+            const level = score >= 1.0 ? 'HIGH' : (score >= MEDIUM_THRESHOLD ? 'MEDIUM' : 'LOW');
 
-            // COMMIT ทุก level รวม HIGH — เพื่อ audit trail และ forensics
             let insertedId;
             try {
                 const actionForHigh = level === 'HIGH' ? 'revoke' : null;
@@ -239,8 +198,7 @@ export default async function handler(req, res) {
                 await client.query('COMMIT');
             } catch (insertErr) {
                 await client.query('ROLLBACK');
-                // 23503 = FK violation (username ไม่มีใน users table)
-                // คืน MEDIUM เหมือน non-existent user → ป้องกัน enumeration
+
                 if (insertErr.code === '23503') {
                     auditLog('ASSESS_FK_VIOLATION', { username, ip });
                     return res.status(200).json({ risk_level: 'MEDIUM', logId: null });
@@ -257,7 +215,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ risk_level: level, logId: insertedId });
 
         } catch (err) {
-            try { await client.query('ROLLBACK'); } catch { /* ignore */ }
+            try { await client.query('ROLLBACK'); } catch {  }
             throw err;
         } finally {
             client.release();

@@ -1,13 +1,6 @@
-/**
- * effects.js — B-SSO (Behavioral Risk-Based Single Sign-On)
- * Dark navy background + interactive grid tiles that glow & flip to white near mouse
- */
 (function () {
   'use strict';
 
-  /* ══════════════════════════════════════════════════════════
-     1.  INTERACTIVE CANVAS
-     ══════════════════════════════════════════════════════════ */
   (function initCanvas() {
     var canvas = document.createElement('canvas');
     canvas.id = 'bg-canvas';
@@ -17,17 +10,15 @@
     var ctx = canvas.getContext('2d');
     var W = 0, H = 0;
 
-    /* ── Mouse (raw + smoothed) ──────────────────────────── */
-    var mx = -9999, my = -9999;   // raw
-    var px = -9999, py = -9999;   // smoothed
+    var mx = -9999, my = -9999;   
+    var px = -9999, py = -9999;   
 
-    /* ── Grid config ─────────────────────────────────────── */
-    var CELL   = 44;    // tile size px
-    var GAP    = 1.5;   // gap between tiles
-    var R_NEAR = 40;    // full-brightness radius
-    var R_FAR  = 110;   // falloff edge radius
+    var CELL   = 44;    
+    var GAP    = 1.5;   
+    var R_NEAR = 40;    
+    var R_FAR  = 110;   
     var COLS, ROWS;
-    var tiles  = [];    // brightness 0..1 per tile
+    var tiles  = [];    
 
     function buildGrid() {
       COLS  = Math.ceil(W / CELL) + 2;
@@ -39,7 +30,6 @@
       }
     }
 
-    /* ── Draw grid ───────────────────────────────────────── */
     function drawGrid() {
       var inner = CELL - GAP;
 
@@ -50,12 +40,10 @@
           var cx2 = tx + CELL * .5;
           var cy2 = ty + CELL * .5;
 
-          /* distance from tile centre to smoothed mouse */
           var dx   = cx2 - px;
           var dy   = cy2 - py;
           var dist = Math.sqrt(dx * dx + dy * dy);
 
-          /* target brightness */
           var target = 0;
           if (dist < R_FAR) {
             if (dist < R_NEAR) {
@@ -66,20 +54,17 @@
             }
           }
 
-          /* ease toward target */
           var cur = tiles[r][c];
           var spd = target > cur ? 0.18 : 0.055;
           tiles[r][c] = cur + (target - cur) * spd;
           var t = tiles[r][c];
 
-          /* base tile: dark navy → near-white */
           var rC = Math.round(16  + (210 - 16)  * t);
           var gC = Math.round(22  + (220 - 22)  * t);
           var bC = Math.round(54  + (255 - 54)  * t);
           ctx.fillStyle = 'rgb(' + rC + ',' + gC + ',' + bC + ')';
           ctx.fillRect(tx + GAP * .5, ty + GAP * .5, inner, inner);
 
-          /* inner radial glow for lit tiles */
           if (t > 0.04) {
             var grd = ctx.createRadialGradient(cx2, cy2, 0, cx2, cy2, inner * .65);
             grd.addColorStop(0,   'rgba(140,170,255,' + (t * .55) + ')');
@@ -89,7 +74,6 @@
             ctx.fillRect(tx + GAP * .5, ty + GAP * .5, inner, inner);
           }
 
-          /* crisp bright border for very lit tiles */
           if (t > 0.45) {
             ctx.strokeStyle = 'rgba(200,215,255,' + (t * .55) + ')';
             ctx.lineWidth   = 0.7;
@@ -99,7 +83,6 @@
       }
     }
 
-    /* ── Faint floating particles ─────────────────────────── */
     var particles = [];
     function Particle() { this.init(); }
     Particle.prototype.init = function() {
@@ -128,7 +111,6 @@
       for (var i = 0; i < n; i++) particles.push(new Particle());
     }
 
-    /* ── Resize ──────────────────────────────────────────── */
     function resize() {
       W = canvas.width  = window.innerWidth;
       H = canvas.height = window.innerHeight;
@@ -136,7 +118,6 @@
       spawnParticles();
     }
 
-    /* ── Main loop ───────────────────────────────────────── */
     function loop() {
       px += (mx - px) * .11;
       py += (my - py) * .11;
@@ -154,7 +135,6 @@
       requestAnimationFrame(loop);
     }
 
-    /* ── Events ──────────────────────────────────────────── */
     window.addEventListener('resize', resize);
     document.addEventListener('mousemove', function(e) { mx = e.clientX; my = e.clientY; });
     document.addEventListener('mouseleave', function() { mx = -9999; my = -9999; });
@@ -163,9 +143,6 @@
     loop();
   })();
 
-  /* ══════════════════════════════════════════════════════════
-     2.  PAGE TRANSITIONS
-     ══════════════════════════════════════════════════════════ */
   window.CarsNav = {
     go: function(url, replace) {
       document.body.classList.add('page-exit');
@@ -184,9 +161,6 @@
     e.preventDefault(); CarsNav.go(href);
   });
 
-  /* ══════════════════════════════════════════════════════════
-     3.  TOAST SYSTEM
-     ══════════════════════════════════════════════════════════ */
   var _tc = null;
   function getTC() {
     if (!_tc) {
@@ -225,9 +199,6 @@
     return { dismiss: dismiss };
   };
 
-  /* ══════════════════════════════════════════════════════════
-     4.  BUTTON RIPPLE
-     ══════════════════════════════════════════════════════════ */
   function ripple(btn, e) {
     var rect = btn.getBoundingClientRect();
     var size = Math.max(rect.width, rect.height) * 2.6;

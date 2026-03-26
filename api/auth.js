@@ -1,17 +1,3 @@
-// ============================================================
-// จัดการการลงทะเบียน ล็อกอิน และการยืนยันอีเมล
-// ทำหน้าที่หลัก 3 อย่าง:
-//   1. ยืนยันอีเมลหลังการลงทะเบียน
-//   2. สร้างบัญชีผู้ใช้ใหม่และส่งอีเมลยืนยัน
-//   3. ตรวจสอบข้อมูลล็อกอินและประเมินความเสี่ยง
-//
-// การป้องกันความปลอดภัย:
-//   - ป้องกัน timing attack เมื่อไม่พบผู้ใช้ในระบบ
-//   - ป้องกันการแข่งขันล็อกอินพร้อมกัน
-//   - ยืนยัน JWT ก่อนบันทึกข้อมูลเพื่อความสมบูรณ์
-//   - จัดเก็บอีเมลเป็นพิมพ์เล็กเสมอ
-// ============================================================
-
 import '../startup-check.js';
 import { pool }                from '../lib/db.js';
 import { validateCsrfToken }   from '../lib/csrf-utils.js';
@@ -33,33 +19,18 @@ import jwt         from 'jsonwebtoken';
 import { serialize } from 'cookie';
 import crypto      from 'crypto';
 
-// ใช้สำหรับป้องกัน timing attack เมื่อไม่พบผู้ใช้ในระบบ
-// cost 12 ต้องตรงกับ production hash — ถ้าต่างกัน timing ต่างกัน = timing leak
 const DUMMY_HASH = bcrypt.hashSync('dummy_timing_prevention_fixed_v2', 12);
 
-/**
- * API Handler หลักสำหรับการจัดการระบบบัญชีผู้ใช้
- * ครอบคลุมการทำงาน: การลงทะเบียนผู้ใช้ใหม่ (Registration), การเข้าสู่ระบบ (Login), และการยืนยันอีเมล (Email Verification)
- * รวมถึงการป้องกันการสุ่มเดารหัสผ่าน, การป้องกัน session fixation และจัดการ redirect สำหรับ OAuth Flow 
- * 
- * @param {import('http').IncomingMessage} req - HTTP Request object ที่มี body, headers, และข้อมูลการเชื่อมต่อ
- * @param {import('http').ServerResponse} res - HTTP Response object สำหรับส่งผลการทำงานกลับไปยัง client
- * @returns {Promise<void>}
- */
 export default async function handler(req, res) {
     setSecurityHeaders(res);
 
-    // ตรวจสอบสถานะการยืนยันอีเมล (สำหรับ polling จาก PC)
     if (req.method === 'GET') {
         const { action, username } = req.query;
-
         res.setHeader('Cache-Control', 'no-store');
         const ip = getClientIp(req);
 
-        // ยืนยันอีเมลผ่านลิงก์ที่ส่งให้ผู้ใช้
         if (action === 'verify-email') {
             const { token } = req.query;
-
             try {
                 if (await checkRateLimit(`ip:${ip}:verify-email`, 10, 60_000)) {
                     auditLog('VERIFY_EMAIL_RATE_LIMIT', { ip });
@@ -78,7 +49,6 @@ export default async function handler(req, res) {
             const client    = await pool.connect();
             try {
                 await client.query('BEGIN');
-
                 const verifyRes = await client.query(
                     `SELECT ev.id, ev.user_id, ev.expires_at, u.email_verified
                      FROM email_verifications ev
@@ -86,39 +56,32 @@ export default async function handler(req, res) {
                      WHERE ev.token_hash = $1 FOR UPDATE`,
                     [tokenHash]
                 );
-
                 if (!verifyRes.rows[0]) {
                     await client.query('ROLLBACK');
                     return res.redirect('/login?error=invalid_token');
                 }
-
                 const row = verifyRes.rows[0];
-
                 if (new Date() > new Date(row.expires_at)) {
                     await client.query('DELETE FROM email_verifications WHERE id = $1', [row.id]);
                     await client.query('COMMIT');
                     auditLog('VERIFY_EMAIL_EXPIRED', { ip });
                     return res.redirect('/login?error=token_expired');
                 }
-
                 if (row.email_verified) {
                     await client.query('DELETE FROM email_verifications WHERE id = $1', [row.id]);
                     await client.query('COMMIT');
                     return res.redirect('/login?verified=1');
                 }
-
                 await client.query('UPDATE users SET email_verified = TRUE WHERE id = $1', [row.user_id]);
                 await client.query('DELETE FROM email_verifications WHERE id = $1', [row.id]);
                 await client.query('COMMIT');
-
                 auditLog('VERIFY_EMAIL_SUCCESS', { userId: row.user_id, ip });
                 let redirectQuery = '?verified=1';
                 if (req.query.next) redirectQuery += `&next=${encodeURIComponent(req.query.next)}`;
                 if (req.query.redirect_back) redirectQuery += `&redirect_back=${encodeURIComponent(req.query.redirect_back)}`;
                 return res.redirect('/login' + redirectQuery);
-
             } catch (err) {
-                try { await client.query('ROLLBACK'); } catch { /* ignore */ }
+                try { await client.query('ROLLBACK'); } catch { }
                 console.error('[ERROR] auth.js verify-email:', err);
                 return res.redirect('/login?error=server_error');
             } finally {
@@ -126,15 +89,10 @@ export default async function handler(req, res) {
             }
         }
 
-        // ตรวจสอบว่าผู้ใช้ยืนยันอีเมลแล้วหรือยัง (สำหรับ polling) ──
-        // ใช้ username เป็น key แทน token เพราะ token ถูก delete หลัง verify แล้ว
-        // endpoint นี้คืนแค่ boolean — ไม่เปิดเผยข้อมูลอื่น
         if (action === 'poll-verified') {
             if (!username || typeof username !== 'string' || username.length > 32 || !USER_REGEX.test(username)) {
                 return res.status(400).json({ error: 'Invalid username' });
             }
-
-            // rate limit: max 30 requests/นาที ต่อ IP (poll ทุก 3s × 60s = 20 requests max)
             try {
                 if (await checkRateLimit(`ip:${ip}:poll-verified`, 30, 60_000)) {
                     return res.status(429).json({ error: 'Too many requests' });
@@ -142,13 +100,11 @@ export default async function handler(req, res) {
             } catch (rlErr) {
                 console.error('[WARN] rate-limit DB error (poll-verified), failing open:', rlErr.message);
             }
-
             try {
                 const result = await pool.query(
                     'SELECT email_verified FROM users WHERE username = $1',
                     [username]
                 );
-                // ถ้าไม่เจอ username → คืน verified: false (ไม่บอกว่าไม่มี user เพื่อป้องกัน enumeration)
                 const verified = result.rows[0]?.email_verified === true;
                 return res.status(200).json({ verified });
             } catch (err) {
@@ -156,7 +112,6 @@ export default async function handler(req, res) {
                 return res.status(500).json({ error: 'Server error' });
             }
         }
-
         return res.status(405).send();
     }
 
@@ -190,7 +145,6 @@ export default async function handler(req, res) {
     }
 
     try {
-        // ดำเนินการลงทะเบียนบัญชีผู้ใช้ใหม่
         if (action === 'register') {
             if (typeof username !== 'string' || typeof email !== 'string' || typeof password !== 'string') {
                 return res.status(400).json({ error: 'Invalid request data' });
@@ -211,9 +165,7 @@ export default async function handler(req, res) {
                 return res.status(400).json({ error: 'Password must be at least 8 characters with uppercase, lowercase, a number, and a symbol' });
             }
 
-            // store lowercase เสมอ → forgot-password.js match ถูก + ป้องกัน duplicate case
             const emailNormalized = email.toLowerCase();
-
             const userExist = await pool.query(
                 'SELECT id FROM users WHERE username = $1 OR LOWER(email) = $2',
                 [username, emailNormalized]
@@ -224,14 +176,12 @@ export default async function handler(req, res) {
             }
 
             const hashed = await bcrypt.hash(password, 12);
-
             try {
                 await pool.query(
                     'INSERT INTO users (username, email, password_hash) VALUES ($1, $2, $3)',
                     [username, emailNormalized, hashed]
                 );
             } catch (insertErr) {
-                // 23505 = unique_violation: concurrent registrations race
                 if (insertErr.code === '23505') {
                     auditLog('REGISTER_DUPLICATE_RACE', { username, ip });
                     return res.status(400).json({ error: 'Username or email is already registered' });
@@ -241,14 +191,9 @@ export default async function handler(req, res) {
 
             auditLog('REGISTER_SUCCESS', { username, ip });
 
-            // ── Email Verification ─────────────────────────
-            // rawToken = 32 bytes hex (256-bit) — ส่งใน email link
-            // tokenHash = SHA-256(rawToken)      — เก็บใน DB
-            // TTL = 24 ชั่วโมง
             const rawVerifyToken  = crypto.randomBytes(32).toString('hex');
             const verifyTokenHash = crypto.createHash('sha256').update(rawVerifyToken).digest('hex');
 
-            // INSERT verification record (ถ้า fail → ไม่ block register, แค่ log)
             let verifyInserted = false;
             try {
                 await pool.query(
@@ -262,7 +207,6 @@ export default async function handler(req, res) {
                 console.error('[WARN] auth.js email_verifications insert failed:', verifyErr.message);
             }
 
-            // ส่ง verification email — await เพื่อให้ Vercel ไม่ตัด connection ก่อน email ส่งเสร็จ
             if (verifyInserted) {
                 const baseUrl     = process.env.BASE_URL;
                 const vUrl        = new URL(`${baseUrl}/api/auth`);
@@ -271,7 +215,6 @@ export default async function handler(req, res) {
                 if (nextParam) vUrl.searchParams.set('next', nextParam);
                 if (redirect_back) vUrl.searchParams.set('redirect_back', redirect_back);
                 const verifyLink  = vUrl.toString();
-                
                 try {
                     await mailTransporter.sendMail({
                         from:    `"B-SSO" <${process.env.EMAIL_FROM}>`,
@@ -292,11 +235,10 @@ export default async function handler(req, res) {
 
             return res.status(200).json({
                 success:            true,
-                email_verification: true,  // บอก frontend ให้แสดงข้อความ "กรุณาตรวจสอบอีเมล"
+                email_verification: true,
             });
         }
 
-        // ดำเนินการล็อกอินเข้าสู่ระบบ
         if (action === 'login') {
             await ensureLoginRisksSchema();
             if (typeof username !== 'string' || typeof password !== 'string') {
@@ -321,7 +263,6 @@ export default async function handler(req, res) {
                 }
             }
 
-            // logId validation
             if (logId == null || (typeof logId !== 'string' && typeof logId !== 'number')) {
                 return res.status(400).json({ error: 'Invalid session. Please sign in again.' });
             }
@@ -342,7 +283,6 @@ export default async function handler(req, res) {
                 console.error('[WARN] rate-limit DB error (auth user), failing open:', rlErr.message);
             }
 
-            // DUMMY_HASH path: ป้องกัน timing attack — user ไม่มี vs password ผิด
             const userRes = await pool.query(
                 'SELECT id, username, email, password_hash, email_verified FROM users WHERE username = $1',
                 [username]
@@ -357,8 +297,6 @@ export default async function handler(req, res) {
                 return res.status(401).json({ error: 'Incorrect username or password' });
             }
 
-            // ── ตรวจ email verification ─────────────────────
-            // email_verified = FALSE → login ไม่ผ่าน (ป้องกัน unverified account)
             if (!user.email_verified) {
                 auditLog('LOGIN_EMAIL_UNVERIFIED', { username, ip });
                 return res.status(403).json({
@@ -370,7 +308,6 @@ export default async function handler(req, res) {
             const loginClient = await pool.connect();
             try {
                 await loginClient.query('BEGIN');
-
                 const riskRes = await loginClient.query(
                     `SELECT risk_level, total_mfa_attempts
                      FROM login_risks
@@ -380,31 +317,24 @@ export default async function handler(req, res) {
                      FOR UPDATE`,
                     [parsedLogId, username, LOGID_TTL_MINUTES]
                 );
-
                 if (!riskRes.rows[0]) {
                     await loginClient.query('ROLLBACK');
                     return res.status(400).json({ error: 'Session expired. Please sign in again.' });
                 }
-
                 const { risk_level: dbRiskLevel, total_mfa_attempts } = riskRes.rows[0];
-
                 if (dbRiskLevel === 'HIGH') {
                     await loginClient.query('ROLLBACK');
                     auditLog('LOGIN_BLOCKED_HIGH_RISK', { username, ip });
                     return res.status(403).json({ error: 'High-risk activity detected. Please try again later.' });
                 }
-
                 if (dbRiskLevel !== 'LOW' && dbRiskLevel !== 'MEDIUM') {
                     await loginClient.query('ROLLBACK');
                     auditLog('LOGIN_BLOCKED_UNEXPECTED_RISK_LEVEL', { username, ip, dbRiskLevel });
                     return res.status(403).json({ error: 'Unexpected session state. Please sign in again.' });
                 }
 
-                // ── MEDIUM path: ส่ง MFA email ─────────────────
                 if (dbRiskLevel === 'MEDIUM') {
                     const currentTotal = Number(total_mfa_attempts || 0);
-
-                    // +1 guard: สงวน 1 slot สำหรับ verify
                     if (currentTotal + 1 >= TOTAL_MFA_MAX) {
                         await loginClient.query(
                             `UPDATE login_risks SET combined_action = 'revoke' WHERE id = $1`,
@@ -415,7 +345,6 @@ export default async function handler(req, res) {
                         return res.status(429).json({ error: 'Too many failed attempts. Please sign in again.' });
                     }
 
-                    // Security Fix: Check if there's already a valid MFA code that hasn't expired
                     const existingMfaRes = await loginClient.query(
                         `SELECT mfa_code, mfa_expires_at
                          FROM login_risks
@@ -425,21 +354,18 @@ export default async function handler(req, res) {
                          FOR UPDATE`,
                         [parsedLogId]
                     );
-
-                    // If there's already a valid MFA code, don't generate a new one
                     if (existingMfaRes.rows[0]) {
                         await loginClient.query('COMMIT');
                         auditLog('MFA_REUSE_EXISTING_CODE', { username, ip, logId: parsedLogId });
                         return res.status(200).json({
                             mfa_required:  true,
-                            email_pending: false  // Code already sent and still valid
+                            email_pending: false
                         });
                     }
 
                     const mfaCode = crypto.randomInt(100000, 1000000).toString();
                     const mfaHash = hashMfaCode(mfaCode, parsedLogId);
 
-                    // reset mfa_attempts = 0: ป้องกัน navigate back แล้ว re-submit
                     await loginClient.query(
                         `UPDATE login_risks
                          SET mfa_code       = $1,
@@ -449,10 +375,8 @@ export default async function handler(req, res) {
                          WHERE id = $2`,
                         [mfaHash, parsedLogId]
                     );
-
                     await loginClient.query('COMMIT');
 
-                    // ส่ง email หลัง COMMIT: ถ้า fail ก่อน COMMIT → user resend ไม่มี code ใน DB
                     let emailSent = false;
                     try {
                         await mailTransporter.sendMail({
@@ -467,7 +391,6 @@ export default async function handler(req, res) {
                         auditLog('MFA_EMAIL_FAIL', { username, ip });
                     }
 
-                    // increment total เฉพาะเมื่อ email สำเร็จ — ไม่ penalize เมื่อ SMTP down
                     if (emailSent) {
                         try {
                             await pool.query(
@@ -487,7 +410,6 @@ export default async function handler(req, res) {
                     });
                 }
 
-                // ── LOW path: direct login ──────────────────────
                 if ((remember === true || remember === 'true') && fingerprint) {
                     await loginClient.query(
                         'INSERT INTO user_devices (username, fingerprint) VALUES ($1, $2) ON CONFLICT DO NOTHING',
@@ -500,14 +422,21 @@ export default async function handler(req, res) {
                     [parsedLogId, username]
                 );
 
-                // JWT sign ก่อน COMMIT: ถ้า sign fail → ROLLBACK → user retry ได้
                 const jti = crypto.randomUUID();
+                const now = Math.floor(Date.now() / 1000);
                 let token;
                 try {
                     token = jwt.sign(
-                        { username, jti, iss: 'auth-service', aud: 'api' },
+                        {
+                            username,
+                            jti,
+                            iss: process.env.BASE_URL,
+                            aud: 'b-sso-api',
+                            iat: now,
+                            exp: now + SESSION_DURATION_SECONDS
+                        },
                         process.env.JWT_SECRET,
-                        { expiresIn: '2h' }
+                        { algorithm: 'HS256' }
                     );
                 } catch (jwtErr) {
                     await loginClient.query('ROLLBACK');
@@ -515,31 +444,21 @@ export default async function handler(req, res) {
                     return res.status(500).json({ error: 'Internal server error' });
                 }
 
-                // ผูก login attempt record กับ session เพื่อให้ behavior.js ดึง pre_login_score มารวมคะแนนได้
                 try {
                     await loginClient.query(
-                        `UPDATE login_risks
-                         SET session_jti = $1
-                         WHERE id = $2 AND username = $3`,
+                        `UPDATE login_risks SET session_jti = $1 WHERE id = $2 AND username = $3`,
                         [jti, parsedLogId, username]
                     );
                 } catch (linkErr) {
                     console.error('[WARN] auth.js link session_jti failed:', linkErr.message);
                 }
-
                 await loginClient.query('COMMIT');
 
-                // SSO Redirect สำหรับ LOW path
                 let redirectUrl = null;
                 if (redirect_back && user?.id) {
-                    // ตรวจสอบว่ามี nextUrl ที่เป็น OAuth authorize หรือไม่
-                    // ถ้ามี → เป็น OAuth flow → ไม่ต้องสร้าง SSO token
-                    
-                    const hasOAuthFlow = req.body.next && 
-                        typeof req.body.next === 'string' && 
+                    const hasOAuthFlow = req.body.next &&
+                        typeof req.body.next === 'string' &&
                         req.body.next.includes('/oauth/authorize');
-                    
-                    
                     if (!hasOAuthFlow) {
                         const isValidRedirect = await validateRedirectBack(redirect_back);
                         if (isValidRedirect) {
@@ -554,13 +473,11 @@ export default async function handler(req, res) {
                                 console.error('[WARN] auth.js SSO token insert failed:', ssoErr.message);
                             }
                         } else {
-                            // Fallback: redirect_back ไม่ valid → กลับไป authorize page
                             console.error('[WARN] auth.js: redirect_back not registered:', redirect_back);
                             auditLog('LOGIN_REDIRECT_BACK_INVALID', { username, redirect_back, ip });
-                            redirectUrl = null; // ให้ไปที่ nextUrl (authorize page)
+                            redirectUrl = null;
                         }
                     } else {
-                        // OAuth flow - ไม่สร้าง SSO token ให้ไปที่ authorize page
                         auditLog('LOGIN_OAUTH_FLOW_DETECTED', { username, redirect_back, ip });
                         redirectUrl = null;
                     }
@@ -576,17 +493,14 @@ export default async function handler(req, res) {
 
                 auditLog('LOGIN_SUCCESS', { username, ip });
                 return res.status(200).json({ success: true, redirectUrl });
-
             } catch (err) {
-                try { await loginClient.query('ROLLBACK'); } catch { /* ignore */ }
+                try { await loginClient.query('ROLLBACK'); } catch { }
                 throw err;
             } finally {
                 loginClient.release();
             }
         }
-
         return res.status(400).json({ error: 'Invalid action' });
-
     } catch (err) {
         console.error('[ERROR] auth.js:', err);
         res.status(500).json({ error: 'Internal server error' });

@@ -156,12 +156,14 @@ CREATE INDEX IF NOT EXISTS idx_rate_limit_events_created
 -- ============================================================
 CREATE TABLE IF NOT EXISTS oauth_clients (
     client_id         TEXT          PRIMARY KEY,       -- e.g. "c_xxx"
-    client_secret_hash TEXT         NOT NULL,          -- HMAC-SHA256
+    client_secret_hash TEXT         NOT NULL,          -- HMAC-SHA256 (empty for public clients)
     name              TEXT          NOT NULL,
     redirect_uris     TEXT[]        NOT NULL,
     allowed_scopes    TEXT[]        NOT NULL,          -- e.g. ['profile','email']
+    client_type       TEXT          NOT NULL DEFAULT 'confidential', -- 'confidential' | 'public'
     owner_username    VARCHAR(32)   NOT NULL REFERENCES users(username) ON DELETE CASCADE,
-    created_at        TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+    created_at        TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+    CONSTRAINT valid_client_type CHECK (client_type IN ('confidential', 'public'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_oauth_clients_owner ON oauth_clients (owner_username);

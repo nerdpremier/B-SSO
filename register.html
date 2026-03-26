@@ -77,7 +77,6 @@
     </div>
   </div>
   <script>
-    // เพิ่ม OAuth params ให้ login links
     (function () {
       const sp = new URLSearchParams(window.location.search);
       const next = sp.get('next');
@@ -88,11 +87,9 @@
         if (redirectBack) loginUrl.searchParams.set('redirect_back', redirectBack);
         const newHref = loginUrl.toString();
 
-        // Update back link
         const backLink = document.getElementById('back-link');
         if (backLink) backLink.href = newHref;
 
-        // Update login link
         const loginLink = document.getElementById('login-link');
         if (loginLink) loginLink.href = newHref;
       }

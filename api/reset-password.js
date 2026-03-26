@@ -1,7 +1,3 @@
-// ============================================================
-// Execute Password Reset
-// ============================================================
-
 import '../startup-check.js';
 import { pool }              from '../lib/db.js';
 import { validateCsrfToken } from '../lib/csrf-utils.js';
@@ -15,15 +11,6 @@ import {
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 
-/**
- * API Handler สำหรับดำเนินการตั้งค่ารหัสผ่านใหม่ (Reset Password)
- * ทำหน้าที่รับค่า Token ที่ส่งมาในลิงก์อีเมลของผู้ใช้และรหัสผ่านใหม่ 
- * ตรวจสอบความถูกต้องและอัปเดตรหัสผ่านใหม่ลงในฐานข้อมูล
- * พร้อมทั้งยกเลิก Session เก่าทั้งหมดของผู้ใช้
- * @param {import('http').IncomingMessage} req - HTTP Request object
- * @param {import('http').ServerResponse} res - HTTP Response object
- * @returns {Promise<void>}
- */
 export default async function handler(req, res) {
     if (req.method !== 'POST') return res.status(405).send();
 
@@ -73,7 +60,6 @@ export default async function handler(req, res) {
         try {
             await client.query('BEGIN');
 
-            // FOR UPDATE ป้องกัน race condition: token ใช้ได้ครั้งเดียวเท่านั้น
             const userRes = await client.query(
                 `SELECT id, username
                  FROM users
@@ -92,8 +78,6 @@ export default async function handler(req, res) {
 
             const newHash = await bcrypt.hash(password, 12);
 
-            // sessions_revoked_at = NOW() → session.js reject JWT ที่ออกก่อน timestamp นี้
-            // reset_token = NULL: ป้องกัน token reuse แม้ concurrent request
             await client.query(
                 `UPDATE users
                  SET password_hash       = $1,
@@ -110,7 +94,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true });
 
         } catch (err) {
-            try { await client.query('ROLLBACK'); } catch { /* ignore */ }
+            try { await client.query('ROLLBACK'); } catch {  }
             throw err;
         } finally {
             client.release();

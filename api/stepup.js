@@ -1,19 +1,3 @@
-// ============================================================
-// Step-up MFA for Customer Apps (Bearer)
-//
-// Purpose:
-//   - Provide post-login "step-up" verification for customer apps that use OAuth Bearer tokens
-//   - Does NOT rely on SSO web session cookies or sessionStorage
-//
-// Endpoint:
-//   POST /api/stepup
-//   Body:
-//     { action: "send" }
-//     { action: "verify", stepup_id: "<uuid>", code: "123456" }
-//
-// Auth:
-//   Authorization: Bearer <access_token> (opaque, validated via oauth_tokens)
-// ============================================================
 import '../startup-check.js';
 import crypto from 'crypto';
 import { pool } from '../lib/db.js';
@@ -33,21 +17,10 @@ const STEPUP_TTL_MINUTES = 5;
 const STEPUP_MAX_ATTEMPTS = 5;
 const STEPUP_MAX_SENDS_PER_SESSION = 3;
 
-/**
- * คำนวณค่า hash ของ Token ด้วยอัลกอริทึม SHA-256
- * @param {string} token - ข้อมูล Token ที่ต้องการ hash
- * @returns {string} ค่า hash ในรูปแบบเลขฐานสิบหก (hex string)
- */
 function hashToken(token) {
     return crypto.createHash('sha256').update(token).digest('hex');
 }
 
-/**
- * คำนวณค่า hash ของรหัส Step-up (OTP) ด้วย HMAC-SHA256 แบบมี Pepper
- * @param {string} stepupId - รหัสอ้างอิงของการยืนยันแบบ Step-up
- * @param {string} code - รหัส OTP ที่ผู้ใช้กรอก
- * @returns {string} ค่า hash ในรูปแบบเลขฐานสิบหก
- */
 function hashStepupCode(stepupId, code) {
     const pepper = process.env.MFA_PEPPER;
     if (!pepper) {
@@ -59,12 +32,6 @@ function hashStepupCode(stepupId, code) {
         .digest('hex');
 }
 
-/**
- * ฟังก์ชันสำหรับดึงและตรวจสอบข้อมูลผู้ใช้จาก OAuth Bearer Token
- * โดยเทียบกับฐานข้อมูลว่า Token ยังไม่หมดอายุหรือไม่ถูกยกเลิก
- * @param {import('http').IncomingMessage} req - HTTP Request object
- * @returns {Promise<{username: string, tokenHash: string, sessionJti: string}|null>} ข้อมูลผู้ใช้หาก Token ถูกต้อง, คืน null หากไม่ถูกต้อง
- */
 async function requireBearerUser(req) {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith?.('Bearer ')) return null;
@@ -85,14 +52,6 @@ async function requireBearerUser(req) {
     return { username: row.username, tokenHash, sessionJti: `oauth:${row.id}` };
 }
 
-/**
- * API Handler หลักสำหรับการยืนยันตัวตนแบบ Step-up MFA สำหรับ OAuth Bearer
- * รองรับการส่งรหัสไปยังอีเมล (Action: 'send') และการตรวจรหัสผ่าน (Action: 'verify')
- * สำหรับใช้ตอนผู้ใช้ทำธุรกรรมสำคัญ (เช่น การโอนเงิน หรือ การแก้ข้อมูลสำคัญ)
- * @param {import('http').IncomingMessage} req - HTTP Request object
- * @param {import('http').ServerResponse} res - HTTP Response object
- * @returns {Promise<void>}
- */
 export default async function handler(req, res) {
     if (req.method !== 'POST') return res.status(405).send();
     setSecurityHeaders(res);
@@ -132,7 +91,7 @@ export default async function handler(req, res) {
     const action = req.body.action;
     if (action === 'send') {
         try {
-            // Limit: ขอ step-up เกิน 3 ครั้งต่อ session → revoke token ทันที
+
             try {
                 const countRes = await pool.query(
                     `SELECT COUNT(*)::int AS cnt
@@ -251,7 +210,7 @@ export default async function handler(req, res) {
                 await client.query('UPDATE stepup_challenges SET verified_at = NOW() WHERE id = $1', [id]);
                 await client.query('COMMIT');
             } catch (err) {
-                try { await client.query('ROLLBACK'); } catch { /* ignore */ }
+                try { await client.query('ROLLBACK'); } catch {  }
                 throw err;
             } finally {
                 client.release();
@@ -267,4 +226,3 @@ export default async function handler(req, res) {
 
     return res.status(400).json({ error: 'Invalid action' });
 }
-

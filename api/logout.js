@@ -1,19 +1,3 @@
-// ============================================================
-// Logout + JWT Revocation + Cron Cleanup
-//
-// รวม 2 handlers ไว้ในไฟล์เดียวเพื่อไม่เกิน Vercel 12-function limit
-// Route ด้วย method:
-//   POST → logout (เดิม)
-//   GET  → cleanup (Vercel Cron: "0 0 * * *")
-//
-// vercel.json:
-//   { "source": "/api/cleanup", "destination": "/api/logout.js" }
-//
-// Security:
-//   POST: CSRF + rate limit (idempotent, คืน success เสมอ)
-//   GET:  timing-safe CRON_SECRET check + rate limit
-// ============================================================
-
 import '../startup-check.js';
 import { serialize, parse }  from 'cookie';
 import jwt                   from 'jsonwebtoken';
@@ -25,22 +9,11 @@ import { runCleanup }        from '../lib/cleanup.js';
 import { setSecurityHeaders, auditLog, isJsonContentType } from '../lib/response-utils.js';
 import crypto from 'crypto';
 
-/**
- * API Handler สำหรับจัดการการออกจากระบบ (Logout) และงานทำความสะอาดข้อมูล (Cron Cleanup)
- * 
- * - รองรับ 2 Method ภายในฟังก์ชันเดียวเพื่อลดจำนวน Serverless Functions (Vercel Limit):
- *   1. GET: สำรองไว้สำหรับ Cron Job เข้ามาทำความสะอาด Token ที่หมดอายุ
- *   2. POST: สำหรับผู้ใช้กดออกจากระบบ จะทำการตั้งค่า Cookie กลับเป็นหน้าเปล่าและเพิกถอน Token ในฐานข้อมูล
- * @param {import('http').IncomingMessage} req - HTTP Request object
- * @param {import('http').ServerResponse} res - HTTP Response object
- * @returns {Promise<void>}
- */
 export default async function handler(req, res) {
     setSecurityHeaders(res);
 
     const ip = getClientIp(req);
 
-    // ── GET: Cron Cleanup ────────────────────────────────────
     if (req.method === 'GET') {
         res.setHeader('Cache-Control', 'no-store');
 
@@ -67,7 +40,6 @@ export default async function handler(req, res) {
             return res.status(401).json({ error: 'Unauthorized' });
         }
 
-        // timing-safe comparison ป้องกัน brute-force CRON_SECRET
         let authorized = false;
         try {
             const expected = Buffer.from(cronSecret, 'utf8');
@@ -94,7 +66,6 @@ export default async function handler(req, res) {
         }
     }
 
-    // ── POST: Logout ─────────────────────────────────────────
     if (req.method !== 'POST') return res.status(405).send();
 
     if (!isJsonContentType(req)) {
@@ -131,25 +102,22 @@ export default async function handler(req, res) {
         if (decoded?.jti && decoded?.exp) {
             try {
                 const expiresAt = new Date(decoded.exp * 1000).toISOString();
-                
-                // Revoke JWT session token
+
                 await pool.query(
                     'INSERT INTO revoked_tokens (jti, expires_at) VALUES ($1, $2) ON CONFLICT DO NOTHING',
                     [decoded.jti, expiresAt]
                 );
-                
-                // Revoke all SSO tokens for this user
+
                 await pool.query(
                     'UPDATE sso_tokens SET used = TRUE WHERE user_id = (SELECT id FROM users WHERE username = $1) AND used = FALSE',
                     [decoded.username]
                 );
-                
-                // Revoke all OAuth tokens for this user
+
                 await pool.query(
                     'UPDATE oauth_tokens SET revoked_at = NOW() WHERE username = $1 AND revoked_at IS NULL',
                     [decoded.username]
                 );
-                
+
                 auditLog('LOGOUT_SUCCESS', { username: decoded.username, jti: decoded.jti, ip });
             } catch (dbErr) {
                 console.error('[ERROR] logout.js revoke token DB error:', dbErr.message);
@@ -175,7 +143,6 @@ export default async function handler(req, res) {
         })
     ]);
 
-    // Cleanup fire-and-forget — ไม่กระทบ response time
     runCleanup().catch(err => console.error('[WARN] logout cleanup failed:', err.message));
 
     return res.status(200).json({ success: true });

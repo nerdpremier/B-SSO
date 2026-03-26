@@ -1,17 +1,3 @@
-// ============================================================
-// Combined MFA Handler
-//
-// รวม 3 MFA endpoints ไว้ในไฟล์เดียวเพื่อลด Vercel function count:
-//   - /api/mfa         → action: 'verify'
-//   - /api/verify-mfa  → action: 'verify'
-//   - /api/resend-mfa  → action: 'resend'
-//
-// ใช้ร่วมกับ vercel.json rewrites:
-//   { "source": "/api/mfa",        "destination": "/api/mfa.js" }
-//   { "source": "/api/verify-mfa", "destination": "/api/mfa.js?action=verify" }
-//   { "source": "/api/resend-mfa", "destination": "/api/mfa.js?action=resend" }
-// ============================================================
-
 import '../startup-check.js';
 import { pool }                from '../lib/db.js';
 import { validateCsrfToken }   from '../lib/csrf-utils.js';
@@ -39,13 +25,6 @@ import crypto      from 'crypto';
 
 const OTP_REGEX = /^\d{6}$/;
 
-/**
- * ฟังก์ชันสำหรับเปรียบเทียบค่า Hash แบบ Timing-Safe
- * ใช้ป้องกันการโจมตีแบบ Timing Attack โดยใช้เวลากรณีจริงกับค่าหลอกเท่ากันเสมอ
- * @param {string} storedHash - ค่า hash ที่เก็บไว้ในฐานข้อมูล
- * @param {string} inputHash - ค่า hash ที่ได้จากการคำนวณข้อมูลที่ผู้ใช้ส่งมา
- * @returns {boolean} เป็นจริงหากค่า hash ตรงกัน
- */
 function timingSafeHashEqual(storedHash, inputHash) {
     if (!storedHash || !inputHash) return false;
     if (storedHash.length !== inputHash.length) return false;
@@ -59,14 +38,6 @@ function timingSafeHashEqual(storedHash, inputHash) {
     }
 }
 
-/**
- * API Handler หลักสำหรับ Multi-Factor Authentication (MFA)
- * ทำหน้าที่สลับ (Route) คำขอไปยังฟังก์ชันเป้าหมายตามค่า Action ที่ส่งมา
- * รองรับ Action: 'verify' (ตรวจสอบรหัส) และ 'resend' (ส่งรหัสใหม่)
- * @param {import('http').IncomingMessage} req - HTTP Request object
- * @param {import('http').ServerResponse} res - HTTP Response object
- * @returns {Promise<void>}
- */
 export default async function handler(req, res) {
     if (req.method !== 'POST') return res.status(405).send();
 
@@ -94,14 +65,6 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Invalid action. Use action: "verify" or "resend"' });
 }
 
-/**
- * ฟังก์ชันสำหรับตรวจสอบรหัส MFA (OTP)
- * ทำหน้าที่ยืนยันรหัสผ่านชั้นที่ 2 เทียบกับที่ส่งให้ผู้ใช้ผ่านอีเมล และจับผิดหากพยายามเดารหัส
- * @param {import('http').IncomingMessage} req - HTTP Request object
- * @param {import('http').ServerResponse} res - HTTP Response object
- * @param {string} ip - IP Address ของผู้ใช้
- * @returns {Promise<void>}
- */
 async function handleVerifyMfa(req, res, ip) {
     await ensureLoginRisksSchema();
     try {
@@ -221,12 +184,20 @@ async function handleVerifyMfa(req, res, ip) {
             }
 
             const jti = crypto.randomUUID();
+            const now = Math.floor(Date.now() / 1000);
             let token;
             try {
                 token = jwt.sign(
-                    { username, jti, iss: 'auth-service', aud: 'api' },
+                    {
+                        username,
+                        jti,
+                        iss: process.env.BASE_URL,  
+                        aud: 'b-sso-api',             
+                        iat: now,                     
+                        exp: now + SESSION_DURATION_SECONDS 
+                    },
                     process.env.JWT_SECRET,
-                    { expiresIn: '2h' }
+                    { algorithm: 'HS256' }         
                 );
             } catch (jwtErr) {
                 await client.query('ROLLBACK');
@@ -234,7 +205,6 @@ async function handleVerifyMfa(req, res, ip) {
                 return res.status(500).json({ error: 'Internal server error' });
             }
 
-            // ผูก login attempt record กับ session เพื่อให้ behavior.js ดึง pre_login_score มารวมคะแนนได้
             try {
                 await client.query(
                     `UPDATE login_risks
@@ -279,7 +249,7 @@ async function handleVerifyMfa(req, res, ip) {
             return res.status(200).json({ success: true, redirectUrl });
 
         } catch (err) {
-            try { await client.query('ROLLBACK'); } catch { /* ignore */ }
+            try { await client.query('ROLLBACK'); } catch {  }
             throw err;
         } finally {
             client.release();
@@ -291,14 +261,6 @@ async function handleVerifyMfa(req, res, ip) {
     }
 }
 
-/**
- * ฟังก์ชันสำหรับส่งรหัส MFA ใหม่ (Resend OTP)
- * ตรวจสอบโควตาการส่งซ้ำ, ควบคุมการส่งเร็วเกินไป (Cooldown) และสร้างรหัสใหม่ส่งผ่านอีเมล
- * @param {import('http').IncomingMessage} req - HTTP Request object
- * @param {import('http').ServerResponse} res - HTTP Response object
- * @param {string} ip - IP Address ของผู้ใช้
- * @returns {Promise<void>}
- */
 async function handleResendMfa(req, res, ip) {
     try {
         if (await checkRateLimit(`ip:${ip}:resend-mfa`, 20, 60_000)) {
@@ -430,7 +392,7 @@ async function handleResendMfa(req, res, ip) {
             });
 
         } catch (err) {
-            try { await client.query('ROLLBACK'); } catch { /* ignore */ }
+            try { await client.query('ROLLBACK'); } catch {  }
             throw err;
         } finally {
             client.release();

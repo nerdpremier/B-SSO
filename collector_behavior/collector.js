@@ -1,25 +1,3 @@
-// ============================================================
-//
-// Lightweight behavior collector สำหรับให้เว็บลูกค้า embed
-// ทำหน้าที่:
-//   - เก็บ interaction พื้นฐาน (mousemove, click, keypress count, visibility)
-//   - Aggregate ข้อมูลทุก 15 วินาที
-//   - ส่งไปที่ SSO endpoint `/api/behavior`
-//
-// การใช้งาน (ในเว็บลูกค้า):
-//
-//   <script src="https://YOUR_SSO_DOMAIN/collector_behavior/collector.js" defer></script>
-//   <script>
-//     window.BSSOBehaviorCollector && window.BSSOBehaviorCollector.start({
-//       intervalMs: 15000
-//     });
-//   </script>
-//
-// ข้อกำหนด:
-//   - ต้องโหลดหลังจาก user login SSO สำเร็จแล้ว (มี session_token cookie)
-//   - ใช้ fetch() → browser สมัยใหม่
-// ============================================================
-
 (function () {
   if (window.BSSOBehaviorCollector) return;
 
@@ -29,31 +7,28 @@
     let events = [];
     let timer  = null;
 
-    // state สำหรับคำนวณ aggregate metrics ต่อ window
     let lastFlushTs    = null;
     let lastEventTs    = null;
     let activeTimeMs   = 0;
     let eventCount     = 0;
 
-    // state สำหรับ feature extraction แบบไม่เก็บ PII
-    let lastMouse = null; // {x,y,t}
+    let lastMouse = null; 
     let mouseTotalDist = 0;
     let mouseSamples = 0;
     let mouseDirChanges = 0;
-    let lastMouseVec = null; // {dx,dy}
+    let lastMouseVec = null; 
 
     let lastClickTs = null;
-    let clickIntervals = []; // ms
+    let clickIntervals = []; 
 
     let lastKeyTs = null;
-    let keyIntervals = []; // ms
+    let keyIntervals = []; 
 
     let scrollSamples = 0;
     let scrollTotalAbsDy = 0;
     let scrollDirChanges = 0;
     let lastScrollSign = 0;
 
-    // ── dedup สำหรับ medium events ──
     let _mediumPending = false;
     let _mediumPendingSince = null;
 
@@ -66,7 +41,7 @@
 
       const now = Date.now();
       if (lastEventTs != null) {
-        // นับ active time แบบคร่าว ๆ: จำกัด gap สูงสุดต่อ event เพื่อไม่ให้ activeTime พุ่งเกินจริง
+
         const delta = now - lastEventTs;
         const capped = delta > 5000 ? 5000 : delta;
         activeTimeMs += capped;
@@ -100,7 +75,6 @@
           if (now - last < 500) return;
           last = now;
 
-          // mouse speed + direction change (ไม่ส่งตำแหน่งดิบเป็น features)
           if (lastMouse) {
             const dt = now - lastMouse.t;
             const dx = e.clientX - lastMouse.x;
@@ -112,7 +86,7 @@
 
               if (lastMouseVec) {
                 const dot = dx * lastMouseVec.dx + dy * lastMouseVec.dy;
-                // dot < 0 = ทิศกลับด้านโดยประมาณ
+
                 if (dot < 0) mouseDirChanges += 1;
               }
               lastMouseVec = { dx, dy };
@@ -219,7 +193,6 @@
          event_count: eventCount,
          window_ms: safeWindowMs,
 
-         // behavioral aggregates (ไม่มี PII)
          avg_mouse_speed: avgMouseSpeed,
          mouse_dir_change_rate: mouseDirChangeRate,
          avg_click_interval_ms: avgClickIntervalMs,
@@ -230,7 +203,6 @@
          scroll_dir_change_rate: scrollDirChangeRate
        };
 
-       // reset metrics สำหรับ window ถัดไป
        lastFlushTs  = now;
        lastEventTs  = null;
        activeTimeMs = 0;
@@ -282,26 +254,25 @@
           const action = (data.action || 'low').toLowerCase();
 
           if (action === 'medium' && !_mediumPending) {
-            // ตั้ง flag ป้องกันไม่ให้ fire ซ้ำจนกว่าจะ verify สำเร็จ
+
             _mediumPending = true;
             _mediumPendingSince = Date.now();
             window.dispatchEvent(new CustomEvent('bsso-behavior-medium', { detail: data }));
           } else if (action === 'revoke') {
-            // บังคับ logout ปัจจุบัน
+
             window.dispatchEvent(new CustomEvent('bsso-behavior-revoke', { detail: data }));
           }
 
-          // auto-reset medium flag หลัง 5 นาที (กรณี user ไม่ verify จะได้ trigger ใหม่ได้)
           if (_mediumPending && _mediumPendingSince && (Date.now() - _mediumPendingSince > 5 * 60 * 1000)) {
             _mediumPending = false;
             _mediumPendingSince = null;
           }
         } catch (err) {
-          // fail-quiet
+
           console && console.debug && console.debug('[BSSOBehaviorCollector] flush error', err.message || err);
         }
       } catch (outer) {
-        // swallow
+
       }
     }
 
@@ -333,4 +304,3 @@
 
   window.BSSOBehaviorCollector = createCollector();
 })();
-

@@ -1,15 +1,3 @@
-// ============================================================
-// Session Verification
-// ทำหน้าที่ตรวจสอบว่า JWT ใน session cookie ยังใช้งานได้หรือไม่
-// ถูกเรียกทุก page load ที่ต้องการ authentication
-//
-// Verification chain (ตามลำดับ):
-//   1. JWT signature + expiry + issuer + audience
-//   2. jti ต้องมี (token เก่าที่ไม่มี jti ถูก reject)
-//   3. username format validation (ป้องกัน forged payload)
-//   4. DB: ตรวจ revoked_tokens (logout blacklist)
-//   5. DB: ตรวจ sessions_revoked_at (password reset invalidation)
-// ============================================================
 import '../startup-check.js';
 import jwt          from 'jsonwebtoken';
 import { parse }    from 'cookie';
@@ -21,23 +9,14 @@ import {
     USER_REGEX,
 } from '../lib/response-utils.js';
 
-/**
- * API Handler สำหรับตรวจสอบสถานะ Session ของผู้ใช้
- * ทำหน้าที่ตรวจสอบความถูกต้องและหมดอายุของ JWT ใน Cookie
- * ตลอดจนตรวจสอบ Blacklist ว่าผู้ใช้ถูกบังคับออกจากระบบ หรือมีการเปลี่ยนรหัสผ่านหรือไม่
- * @param {import('http').IncomingMessage} req - HTTP Request object
- * @param {import('http').ServerResponse} res - HTTP Response object
- * @returns {Promise<void>}
- */
 export default async function handler(req, res) {
     if (req.method !== 'GET') return res.status(405).send();
 
     setSecurityHeaders(res);
-    // no-store: ป้องกัน browser/CDN cache session response
+
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
-    
-    // CORS headers for cross-origin SSO status checks
+
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -52,7 +31,6 @@ export default async function handler(req, res) {
         console.error('[WARN] rate-limit DB error (session), failing open:', rlErr.message);
     }
 
-    // Probabilistic cleanup (5%): session.js ถูกเรียกบ่อยที่สุด → cleanup coverage สูง
     if (Math.random() < 0.05) {
         pool.query("DELETE FROM revoked_tokens WHERE expires_at < NOW()")
             .catch(err => console.error('[WARN] session.js revoked_tokens cleanup error:', err.message));
@@ -85,7 +63,7 @@ export default async function handler(req, res) {
     }
 
     try {
-        // Single query: JOIN users + LEFT JOIN revoked_tokens (ลด round-trips จาก 2 เป็น 1)
+
         const result = await pool.query(
             `SELECT u.sessions_revoked_at, rt.jti AS revoked_jti
              FROM users u

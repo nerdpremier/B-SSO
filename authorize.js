@@ -1,5 +1,3 @@
-// authorize.js — B-SSO OAuth Consent Page
-// PKCE-aware authorization flow
 'use strict';
 
 let _oauthParams  = {};
@@ -33,10 +31,6 @@ function showError(msg) {
   $id('error-msg').textContent  = msg;
 }
 
-/**
- * เริ่มต้นกระบวนการหน้าจอขออนุญาตสิทธิ์ (Authorize Consent)
- * ดึง Parameter จาก URL เพื่อตรวจสอบความถูกต้อง และเตรียมค่าต่างๆ สำหรับหน้าจอ
- */
 async function init() {
   document.body.classList.remove('auth-pending');
   $id('main-card').hidden = false;
@@ -47,7 +41,6 @@ async function init() {
   const responseType = sp.get('response_type');
   const state        = sp.get('state');
 
-  // อ่าน PKCE + scope params ที่ client ส่งมา
   const scope                = sp.get('scope')                  || null;
   const codeChallenge        = sp.get('code_challenge')         || null;
   const codeChallengeMethod  = sp.get('code_challenge_method')  || null;
@@ -57,7 +50,6 @@ async function init() {
     return;
   }
 
-  // เก็บ PKCE + scope ไว้ใน _oauthParams เพื่อส่งใน handleAllow()
   _oauthParams = {
     clientId,
     redirectUri,
@@ -75,7 +67,6 @@ async function init() {
     apiUrl.searchParams.set('response_type', responseType);
     apiUrl.searchParams.set('state',         state);
 
-    // ส่ง PKCE + scope ไปใน GET เพื่อให้ server validate ก่อนแสดง consent UI
     if (scope)               apiUrl.searchParams.set('scope',                 scope);
     if (codeChallenge)       apiUrl.searchParams.set('code_challenge',        codeChallenge);
     if (codeChallengeMethod) apiUrl.searchParams.set('code_challenge_method', codeChallengeMethod);
@@ -84,7 +75,7 @@ async function init() {
     data = await res.json();
 
     if (res.status === 401) {
-      // ไม่ได้ login → redirect ไป login พร้อม ?next= และ ?redirect_back= เพื่อกลับมา consent หลัง login
+
       const nextUrl = `${window.location.href}`;
       const currentUrl = new URL(window.location.href);
       const redirectBack = currentUrl.searchParams.get('redirect_uri');
@@ -102,12 +93,10 @@ async function init() {
     return;
   }
 
-  // อัปเดต scope จาก server response (server อาจ trim scope ลง)
   if (Array.isArray(data.scope)) {
     _oauthParams.scope = data.scope.join(' ');
   }
 
-  // เก็บ pre_login_log_id จาก server response (ถ้ามี)
   if (data.pre_login_log_id) {
     _preLoginLogId = data.pre_login_log_id;
     console.log(`[INFO] authorize.js: Received pre_login_log_id=${_preLoginLogId}`);
@@ -123,7 +112,6 @@ async function init() {
   $id('loading-overlay').hidden       = true;
   $id('consent-ui').hidden            = false;
 
-  // แสดง scopes ที่ขอ (ถ้ามี element)
   const scopeListEl = $id('scope-list');
   if (scopeListEl && data.scope) {
     const scopes = Array.isArray(data.scope) ? data.scope : [data.scope];
@@ -131,10 +119,6 @@ async function init() {
   }
 }
 
-/**
- * จัดการเมื่อผู้ใช้กดปุ่ม 'Allow Access' (อนุญาต)
- * ส่งข้อมูล Consent กลับไปยังเซิร์ฟเวอร์เพื่อออก Authorization Code ให้แอปภายนอก
- */
 async function handleAllow() {
   if (_isSubmitting) return;
   _isSubmitting = true;
@@ -143,7 +127,7 @@ async function handleAllow() {
   setSubmitting(true);
 
   try {
-    // ส่ง scope + PKCE params ใน POST body ด้วย
+
     const body = {
       client_id:    _oauthParams.clientId,
       redirect_uri: _oauthParams.redirectUri,
@@ -151,18 +135,15 @@ async function handleAllow() {
       approved:     true,
     };
 
-    // เพิ่ม scope ถ้ามีค่า
     if (_oauthParams.scope) {
       body.scope = _oauthParams.scope;
     }
 
-    // เพิ่ม PKCE ถ้ามีค่า (ทั้งคู่ต้องมีพร้อมกัน)
     if (_oauthParams.codeChallenge && _oauthParams.codeChallengeMethod) {
       body.code_challenge        = _oauthParams.codeChallenge;
       body.code_challenge_method = _oauthParams.codeChallengeMethod;
     }
 
-    // เพิ่ม pre_login_log_id ถ้ามีค่า
     if (_preLoginLogId) {
       body.pre_login_log_id = _preLoginLogId;
     }
@@ -199,10 +180,6 @@ async function handleAllow() {
   }
 }
 
-/**
- * จัดการเมื่อผู้ใช้กดปุ่ม 'Deny' (ปฏิเสธ)
- * จะทำการส่งข้อผิดพลาด `access_denied` กลับไปยัง Redirect URI ของแอปภายนอก
- */
 function handleDeny() {
   if (_isSubmitting) return;
   if (!_oauthParams.redirectUri || !_oauthParams.state) {
@@ -220,17 +197,16 @@ function handleDeny() {
 document.addEventListener('DOMContentLoaded', () => {
   $id('btn-allow')?.addEventListener('click', handleAllow);
   $id('btn-deny')?.addEventListener('click',  handleDeny);
-  
-  // เก็บ OAuth URL ไว้ก่อน logout เพื่อกลับมาต่อ flow ได้
+
   const signOutLink = document.querySelector('a[href="/logout"]');
   if (signOutLink) {
     signOutLink.addEventListener('click', (e) => {
       e.preventDefault();
-      // เก็บ current URL (authorize page พร้อม OAuth params) ไว้ใน sessionStorage
+
       sessionStorage.setItem('post_logout_redirect', window.location.href);
       window.location.href = '/logout';
     });
   }
-  
+
   init();
 });
