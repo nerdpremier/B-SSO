@@ -296,7 +296,7 @@ async function handleAuthorize(req, res, ip) {
 
     if (req.method === 'GET') {
         const { client_id, redirect_uri, response_type, state, scope,
-                code_challenge, code_challenge_method } = req.query;
+                code_challenge, code_challenge_method, pre_login_log_id } = req.query;
 
         if (response_type !== 'code')
             return res.status(400).json({ error: 'unsupported_response_type' });
@@ -346,18 +346,44 @@ async function handleAuthorize(req, res, ip) {
         }
 
         let preLoginLogId = null;
-        try {
-            const riskRes = await pool.query(
-                `SELECT id FROM login_risks
-                 WHERE username = $1 AND session_jti = $2
-                 ORDER BY created_at DESC LIMIT 1`,
-                [decoded.username, decoded.jti]
-            );
-            if (riskRes.rows[0]) {
-                preLoginLogId = riskRes.rows[0].id;
+
+        // 1. ถ้า client ส่ง pre_login_log_id มา → ใช้ค่านั้น (ลอง validate ก่อน)
+        if (pre_login_log_id && /^\d+$/.test(pre_login_log_id)) {
+            try {
+                const riskRes = await pool.query(
+                    `SELECT id, username FROM login_risks
+                     WHERE id = $1 AND created_at > NOW() - INTERVAL '15 minutes'`,
+                    [Number(pre_login_log_id)]
+                );
+                if (riskRes.rows[0] && riskRes.rows[0].username === decoded.username) {
+                    preLoginLogId = riskRes.rows[0].id;
+                } else if (riskRes.rows[0] && riskRes.rows[0].username !== decoded.username) {
+                    // log_id ตรงแต่ username ไม่ตรง → อาจเป็นการโจมตี
+                    auditLog('OAUTH_PRELOGIN_USER_MISMATCH', {
+                        expectedUser: decoded.username,
+                        logIdOwner: riskRes.rows[0].username
+                    });
+                }
+            } catch (dbErr) {
+                console.error('[WARN] oauth.js fetch pre-login risk by id failed:', dbErr.message);
             }
-        } catch (dbErr) {
-            console.error('[WARN] oauth.js fetch existing pre-login risk failed:', dbErr.message);
+        }
+
+        // 2. ถ้ายังไม่มี → fallback ค้นหาด้วย username + session_jti
+        if (!preLoginLogId) {
+            try {
+                const riskRes = await pool.query(
+                    `SELECT id FROM login_risks
+                     WHERE username = $1 AND session_jti = $2
+                     ORDER BY created_at DESC LIMIT 1`,
+                    [decoded.username, decoded.jti]
+                );
+                if (riskRes.rows[0]) {
+                    preLoginLogId = riskRes.rows[0].id;
+                }
+            } catch (dbErr) {
+                console.error('[WARN] oauth.js fetch existing pre-login risk failed:', dbErr.message);
+            }
         }
 
         auditLog('OAUTH_CONSENT_VIEW', { username: decoded.username, clientId: client_id, ip, preLoginLogId });
