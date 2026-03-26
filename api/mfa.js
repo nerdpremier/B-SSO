@@ -119,7 +119,7 @@ async function handleVerifyMfa(req, res, ip) {
                    AND lr.username = $2
                    AND lr.risk_level = 'MEDIUM'
                    AND lr.is_success = FALSE
-                   AND lr.created_at > NOW() - make_interval(mins => $3)
+                   AND lr.created_at > NOW() - INTERVAL '1 minute' * $3
                  FOR UPDATE OF lr`,
                 [parsedLogId, username, LOGID_TTL_MINUTES]
             );
@@ -308,7 +308,7 @@ async function handleResendMfa(req, res, ip) {
                    AND lr.username = $2
                    AND lr.risk_level = 'MEDIUM'
                    AND lr.is_success = FALSE
-                   AND lr.created_at > NOW() - make_interval(mins => $3)
+                   AND lr.created_at > NOW() - INTERVAL '1 minute' * $3
                  FOR UPDATE OF lr`,
                 [parsedLogId, username, LOGID_TTL_MINUTES]
             );

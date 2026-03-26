@@ -133,7 +133,7 @@ export default async function handler(req, res) {
                         `SELECT id, risk_level, pre_login_score
                          FROM login_risks
                          WHERE id = $1 AND username = $2
-                           AND created_at > NOW() - make_interval(mins => $3)
+                           AND created_at > NOW() - INTERVAL '1 minute' * $3
                            AND is_success = FALSE
                          FOR UPDATE`,
                         [parsedReuseId, username, LOGID_TTL_MINUTES]
