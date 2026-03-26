@@ -345,45 +345,88 @@ async function handleAuthorize(req, res, ip) {
             return res.status(401).json({ error: 'unauthenticated', app_name: appName });
         }
 
+        // อ่าน device/fingerprint จาก cookies ที่ client ส่งมา
+        const cookies = parse(req.headers.cookie || '');
+        const device = decodeURIComponent(cookies.b_device || 'unknown').slice(0, 256);
+        const fingerprint = decodeURIComponent(cookies.b_fp || 'unknown').slice(0, 64);
+
         let preLoginLogId = null;
+        const client = await pool.connect();
 
-        // 1. ถ้า client ส่ง pre_login_log_id มา → ใช้ค่านั้น (ลอง validate ก่อน)
-        if (pre_login_log_id && /^\d+$/.test(pre_login_log_id)) {
-            try {
-                const riskRes = await pool.query(
-                    `SELECT id, username FROM login_risks
-                     WHERE id = $1 AND created_at > NOW() - INTERVAL '15 minutes'`,
-                    [Number(pre_login_log_id)]
-                );
-                if (riskRes.rows[0] && riskRes.rows[0].username === decoded.username) {
-                    preLoginLogId = riskRes.rows[0].id;
-                } else if (riskRes.rows[0] && riskRes.rows[0].username !== decoded.username) {
-                    // log_id ตรงแต่ username ไม่ตรง → อาจเป็นการโจมตี
-                    auditLog('OAUTH_PRELOGIN_USER_MISMATCH', {
-                        expectedUser: decoded.username,
-                        logIdOwner: riskRes.rows[0].username
-                    });
-                }
-            } catch (dbErr) {
-                console.error('[WARN] oauth.js fetch pre-login risk by id failed:', dbErr.message);
-            }
-        }
+        try {
+            await client.query('BEGIN');
 
-        // 2. ถ้ายังไม่มี → fallback ค้นหาด้วย username + session_jti
-        if (!preLoginLogId) {
-            try {
-                const riskRes = await pool.query(
-                    `SELECT id FROM login_risks
-                     WHERE username = $1 AND session_jti = $2
-                     ORDER BY created_at DESC LIMIT 1`,
-                    [decoded.username, decoded.jti]
-                );
-                if (riskRes.rows[0]) {
-                    preLoginLogId = riskRes.rows[0].id;
+            // 1. ตรวจสอบว่า device นี้เคย register สำหรับ user นี้หรือไม่
+            const deviceRes = await client.query(
+                `SELECT id FROM user_devices
+                 WHERE username = $1 AND fingerprint = $2`,
+                [decoded.username, fingerprint]
+            );
+
+            const isKnownDevice = deviceRes.rows.length > 0;
+
+            // 2. ถ้า client ส่ง pre_login_log_id มา → ใช้ค่านั้น (ลอง validate ก่อน)
+            if (pre_login_log_id && /^\d+$/.test(pre_login_log_id)) {
+                try {
+                    const riskRes = await client.query(
+                        `SELECT id, username FROM login_risks
+                         WHERE id = $1 AND created_at > NOW() - INTERVAL '15 minutes'`,
+                        [Number(pre_login_log_id)]
+                    );
+                    if (riskRes.rows[0] && riskRes.rows[0].username === decoded.username) {
+                        preLoginLogId = riskRes.rows[0].id;
+                    } else if (riskRes.rows[0] && riskRes.rows[0].username !== decoded.username) {
+                        auditLog('OAUTH_PRELOGIN_USER_MISMATCH', {
+                            expectedUser: decoded.username,
+                            logIdOwner: riskRes.rows[0].username
+                        });
+                    }
+                } catch (dbErr) {
+                    console.error('[WARN] oauth.js fetch pre-login risk by id failed:', dbErr.message);
                 }
-            } catch (dbErr) {
-                console.error('[WARN] oauth.js fetch existing pre-login risk failed:', dbErr.message);
             }
+
+            // 3. ถ้ายังไม่มี preLoginLogId → สร้างใหม่
+            if (!preLoginLogId) {
+                // คำนวณ risk score
+                // base: 0.1
+                // device ใหม่: +0.4
+                // session ใหม่ (ไม่มี jti เดิม): +0.0 (มี session อยู่แล้ว)
+                let score = 0.1;
+                if (!isKnownDevice) {
+                    score += 0.4;
+                }
+
+                const { medium: MEDIUM_THRESHOLD } = getCombinedConfig();
+                const level = score >= MEDIUM_THRESHOLD ? 'MEDIUM' : 'LOW';
+
+                const insertRes = await client.query(
+                    `INSERT INTO login_risks
+                     (username, device, fingerprint, risk_level, pre_login_score, session_jti, is_success)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7)
+                     RETURNING id`,
+                    [decoded.username, device, fingerprint, level, score, decoded.jti, true]
+                );
+                preLoginLogId = insertRes.rows[0].id;
+
+                // ถ้าเป็น device ใหม่ → register ไว้
+                if (!isKnownDevice) {
+                    await client.query(
+                        `INSERT INTO user_devices (username, device, fingerprint, created_at)
+                         VALUES ($1, $2, $3, NOW())
+                         ON CONFLICT (username, fingerprint) DO NOTHING`,
+                        [decoded.username, device, fingerprint]
+                    );
+                }
+            }
+
+            await client.query('COMMIT');
+        } catch (err) {
+            await client.query('ROLLBACK');
+            console.error('[ERROR] oauth.js handleAuthorize risk handling:', err);
+            throw err;
+        } finally {
+            client.release();
         }
 
         auditLog('OAUTH_CONSENT_VIEW', { username: decoded.username, clientId: client_id, ip, preLoginLogId });
