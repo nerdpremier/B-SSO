@@ -576,8 +576,6 @@ async function handleAuthorize(req, res, ip) {
         }
         return res.status(200).json({ redirect_url: redirectUrl.toString() });
     }
-
-    return res.status(405).json({ error: 'Method not allowed' });
 }
 
 async function handleToken(req, res, ip) {
