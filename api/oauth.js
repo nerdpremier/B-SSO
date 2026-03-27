@@ -599,69 +599,10 @@ async function handleAuthorize(req, res, ip) {
         const expiresAt      = new Date(Date.now() + CODE_TTL_MINUTES * 60 * 1000);
 
         let finalPreLoginLogId = pre_login_log_id;
-        if (!finalPreLoginLogId && device !== 'unknown' && fingerprint !== 'unknown') {
-            const client = await pool.connect();
-            try {
-                await client.query('BEGIN');
-                
-                const deviceRes = await client.query(
-                    `SELECT id FROM user_devices
-                     WHERE username = $1 AND fingerprint = $2`,
-                    [decoded.username, fingerprint]
-                );
-                const isKnownDevice = deviceRes.rows.length > 0;
-
-                let score = 0.1;
-                if (!isKnownDevice) {
-                    score += 0.4;
-                }
-                const level = score >= 0.5 ? 'HIGH' : score >= 0.3 ? 'MEDIUM' : 'LOW';
-
-                const insertRes = await client.query(
-                    `INSERT INTO login_risks
-                     (username, device, fingerprint, risk_level, pre_login_score, session_jti, is_success)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7)
-                     RETURNING id`,
-                    [decoded.username, device, fingerprint, level, score, decoded.jti, true]
-                );
-                finalPreLoginLogId = insertRes.rows[0].id;
-
-                if (!isKnownDevice) {
-                    try {
-                        await client.query(
-                            `INSERT INTO user_devices (username, device, fingerprint, created_at)
-                             VALUES ($1, $2, $3, NOW())
-                             ON CONFLICT (username, fingerprint) DO NOTHING`,
-                            [decoded.username, device, fingerprint]
-                        );
-                    } catch (colErr) {
-                        if (colErr.message?.includes('column "device"')) {
-                            await client.query(
-                                `INSERT INTO user_devices (username, fingerprint, created_at)
-                                 VALUES ($1, $2, NOW())
-                                 ON CONFLICT (username, fingerprint) DO NOTHING`,
-                                [decoded.username, fingerprint]
-                            );
-                        } else {
-                            throw colErr;
-                        }
-                    }
-                }
-
-                await client.query('COMMIT');
-                auditLog('OAUTH_POST_CREATED_LOGIN_RISK', {
-                    username: decoded.username,
-                    device,
-                    fingerprint,
-                    loginRiskId: finalPreLoginLogId,
-                    isKnownDevice
-                });
-            } catch (err) {
-                await client.query('ROLLBACK');
-                console.error('[ERROR] oauth.js POST login_risk creation:', err);
-            } finally {
-                client.release();
-            }
+        
+        // ไม่สร้าง login_risks ใหม่ ใช้แค่ค่าจาก pre-login phase
+        if (!finalPreLoginLogId) {
+            console.warn('[WARN] oauth.js: No pre_login_log_id provided, using null');
         }
 
         try {
