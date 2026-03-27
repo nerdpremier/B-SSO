@@ -391,31 +391,25 @@ async function handleAuthorize(req, res, ip) {
         }
 
         let preLoginLogId = null;
-        const client = await pool.connect();
 
-        try {
-            await client.query('BEGIN');
-
-            if (pre_login_log_id && /^\d+$/.test(pre_login_log_id)) {
-                try {
-                    const riskRes = await client.query(
-                        `SELECT id, username FROM login_risks
-                         WHERE id = $1 AND created_at > NOW() - INTERVAL '15 minutes'`,
-                        [Number(pre_login_log_id)]
-                    );
-                    if (riskRes.rows[0] && riskRes.rows[0].username === decoded.username) {
-                        preLoginLogId = riskRes.rows[0].id;
-                    } else if (riskRes.rows[0] && riskRes.rows[0].username !== decoded.username) {
-                        auditLog('OAUTH_PRELOGIN_USER_MISMATCH', {
-                            expectedUser: decoded.username,
-                            logIdOwner: riskRes.rows[0].username
-                        });
-                    }
-                } catch (dbErr) {
-            console.error('[ERROR] oauth.js handleAuthorize risk handling:', dbErr);
-            throw dbErr;
-        } finally {
-            client.release();
+        if (pre_login_log_id && /^\d+$/.test(pre_login_log_id)) {
+            try {
+                const riskRes = await pool.query(
+                    `SELECT id, username FROM login_risks
+                     WHERE id = $1 AND created_at > NOW() - INTERVAL '15 minutes'`,
+                    [Number(pre_login_log_id)]
+                );
+                if (riskRes.rows[0] && riskRes.rows[0].username === decoded.username) {
+                    preLoginLogId = riskRes.rows[0].id;
+                } else if (riskRes.rows[0] && riskRes.rows[0].username !== decoded.username) {
+                    auditLog('OAUTH_PRELOGIN_USER_MISMATCH', {
+                        expectedUser: decoded.username,
+                        logIdOwner: riskRes.rows[0].username
+                    });
+                }
+            } catch (dbErr) {
+                console.error('[ERROR] oauth.js handleAuthorize risk handling:', dbErr);
+            }
         }
 
         auditLog('OAUTH_CONSENT_VIEW', { username: decoded.username, clientId: client_id, ip, preLoginLogId });
