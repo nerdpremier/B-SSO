@@ -427,7 +427,39 @@ export default async function handler(req, res) {
 
         if (combinedAction === 'medium' && authType === 'oauth_bearer') {
             try {
+                // เช็คว่ามี stepup challenge ที่ยัง active อยู่หรือไม่
+                const existingStepupRes = await pool.query(
+                    `SELECT id, expires_at
+                     FROM stepup_challenges
+                     WHERE username = $1 AND session_jti = $2 
+                       AND verified_at IS NULL 
+                       AND expires_at > NOW()
+                     ORDER BY created_at DESC
+                     LIMIT 1`,
+                    [username, sessionJti]
+                );
 
+                if (existingStepupRes.rows.length > 0) {
+                    // มี stepup ที่ยัง active อยู่แล้ว ไม่ต้องสร้างใหม่
+                    const existingStepup = existingStepupRes.rows[0];
+                    auditLog('OAUTH_STEP_UP_ALREADY_EXISTS', {
+                        username,
+                        ip,
+                        existingStepupId: existingStepup.id,
+                        sessionJti,
+                        combinedScore
+                    });
+
+                    return res.status(200).json({
+                        action: 'step_up_required',
+                        request_id: requestId,
+                        stepup_id: existingStepup.id,
+                        expires_in: Math.floor((new Date(existingStepup.expires_at) - new Date()) / 1000),
+                        reason: 'medium_risk_behavior_detected'
+                    });
+                }
+
+                // ไม่มี stepup ที่ active อยู่ สร้างใหม่
                 const stepupId = crypto.randomUUID();
                 const stepupCode = crypto.randomInt(100000, 1000000).toString();
 
