@@ -336,8 +336,9 @@ export default async function handler(req, res) {
                          WHERE username = $1 
                            AND session_jti = $2 
                            AND combined_action = 'medium'
-                           AND created_at > NOW() - INTERVAL '8 hours'`,
-                        [username, sessionJti]
+                           AND created_at > NOW() - INTERVAL '8 hours'
+                           AND request_id != $3`,
+                        [username, sessionJti, requestId]
                     );
                     const mediumCount = mediumCountRes.rows[0]?.cnt || 0;
 
