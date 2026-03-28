@@ -133,7 +133,6 @@ export default async function handler(req, res) {
             return res.status(500).json({ error: 'Internal server error' });
         }
     } else {
-        await blockUser(username, ip);
         return res.status(401).json({ action: 'revoke' });
     }
 
