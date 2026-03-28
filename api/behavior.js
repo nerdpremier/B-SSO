@@ -446,7 +446,7 @@ export default async function handler(req, res) {
 
                 // เช็คว่ามี stepup challenge ที่ยัง active อยู่หรือไม่
                 const existingStepupRes = await pool.query(
-                    `SELECT id, expires_at, return_url
+                    `SELECT id, created_at, expires_at, return_url
                      FROM stepup_challenges
                      WHERE username = $1 AND session_jti = $2
                        AND verified_at IS NULL
@@ -460,32 +460,37 @@ export default async function handler(req, res) {
                 const clientReturnUrl = req.body?.return_url || null;
 
                 if (existingStepupRes.rows.length > 0) {
-                    // มี stepup ที่ยัง active อยู่แล้ว ไม่ต้องสร้างใหม่
+                    // มี stepup ที่ยัง active อยู่แล้ว ตรวจสอบว่าเก่าเกินไปหรือไม่
                     const existingStepup = existingStepupRes.rows[0];
-                    auditLog('OAUTH_STEP_UP_ALREADY_EXISTS', {
-                        username,
-                        ip,
-                        existingStepupId: existingStepup.id,
-                        sessionJti,
-                        combinedScore
-                    });
+                    const now = new Date();
+                    const createdAt = new Date(existingStepup.created_at);
+                    const ageMinutes = (now - createdAt) / (1000 * 60);
+                    
+                    // ถ้ามีการสร้าง challenge ใน 2 นาที ให้ revoke token ทันที
+                    if (ageMinutes <= 2) {
+                        auditLog('OAUTH_STEP_UP_RAPID_CHALLENGE', {
+                            username,
+                            ip,
+                            existingStepupId: existingStepup.id,
+                            sessionJti,
+                            ageMinutes: Math.round(ageMinutes),
+                            combinedScore
+                        });
 
-                    // สร้าง redirect URL ไปที่หน้า stepup-verify ของ B-SSO
-                    const baseUrl = process.env.BASE_URL || '';
-                    const stepupPageUrl = new URL('/stepup-verify', baseUrl);
-                    stepupPageUrl.searchParams.set('challenge_id', existingStepup.id);
-                    if (clientReturnUrl || existingStepup.return_url) {
-                        stepupPageUrl.searchParams.set('return_url', clientReturnUrl || existingStepup.return_url);
+                        // Revoke token
+                        const oauthTokenId = sessionJti.split(':')[1];
+                        if (oauthTokenId) {
+                            await pool.query(
+                                'UPDATE oauth_tokens SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL',
+                                [oauthTokenId]
+                            );
+                        }
+
+                        return res.status(403).json({
+                            action: 'revoke',
+                            reason: 'too_many_stepup_challenges'
+                        });
                     }
-
-                    return res.status(200).json({
-                        action: 'step_up_redirect',
-                        request_id: requestId,
-                        stepup_id: existingStepup.id,
-                        stepup_redirect_url: stepupPageUrl.toString(),
-                        expires_in: Math.floor((new Date(existingStepup.expires_at) - new Date()) / 1000),
-                        reason: 'medium_risk_behavior_detected'
-                    });
                 }
 
                 // ไม่มี stepup ที่ active อยู่ สร้างใหม่
