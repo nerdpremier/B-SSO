@@ -847,6 +847,7 @@ async function handleToken(req, res, ip) {
             const accessExp   = new Date(Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000);
 
             let refreshPreLoginScore = 0.1;
+            let refreshPreLoginLogId = null;
             try {
                 const preLoginRes = await tokenClient.query(
                     `SELECT id, pre_login_score
@@ -858,13 +859,14 @@ async function handleToken(req, res, ip) {
                     [rt.username]
                 );
                 refreshPreLoginScore = preLoginRes.rows[0]?.pre_login_score || 0.1;
+                refreshPreLoginLogId = preLoginRes.rows[0]?.id || null;
             } catch { }
 
             const newAccessResult = await tokenClient.query(
-                `INSERT INTO oauth_tokens (token_hash, token_type, client_id, username, scope, expires_at, risk_level, step_up_required, pre_login_score)
-                 VALUES ($1, 'access', $2, $3, $4, $5, $6, $7, $8)
+                `INSERT INTO oauth_tokens (token_hash, token_type, client_id, username, scope, expires_at, risk_level, step_up_required, pre_login_score, pre_login_log_id)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                  RETURNING id`,
-                [accessHash, client_id, rt.username, scope, accessExp, currentRiskLevel, stepUpRequired, refreshPreLoginScore]
+                [accessHash, 'access', client_id, rt.username, scope, accessExp, currentRiskLevel, stepUpRequired, refreshPreLoginScore, refreshPreLoginLogId]
             );
             const newAccessTokenId = newAccessResult.rows[0].id;
 

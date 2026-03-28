@@ -247,7 +247,7 @@ export default async function handler(req, res) {
             ? engineData.normalized
             : null;
 
-        let preLoginScore = 0;
+        let preLoginScore = null;
         let loginIp = null;
         let combinedScore = null;
         let combinedAction = 'low';
