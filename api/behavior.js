@@ -92,7 +92,6 @@ export default async function handler(req, res) {
         const token = authHeader.slice(7).trim();
         if (!token || token.length > 128) {
             res.setHeader('WWW-Authenticate', 'Bearer realm="oauth", error="invalid_token"');
-            await blockUser(username, ip);
             return res.status(401).json({ action: 'revoke' });
         }
 
@@ -106,20 +105,19 @@ export default async function handler(req, res) {
 
             if (result.rows.length === 0) {
                 res.setHeader('WWW-Authenticate', 'Bearer realm="oauth", error="invalid_token"');
-                await blockUser(username, ip);
                 return res.status(401).json({ action: 'revoke' });
             }
 
             const row = result.rows[0];
             if (row.revoked_at) {
                 res.setHeader('WWW-Authenticate', 'Bearer realm="oauth", error="invalid_token"');
-                await blockUser(username, ip);
+                await blockUser(row.username, ip);
                 return res.status(401).json({ action: 'revoke' });
             }
             if (new Date() > new Date(row.expires_at)) {
                 res.setHeader('WWW-Authenticate',
                     'Bearer realm="oauth", error="invalid_token", error_description="token expired"');
-                await blockUser(username, ip);
+                await blockUser(row.username, ip);
                 return res.status(401).json({ action: 'revoke' });
             }
 
