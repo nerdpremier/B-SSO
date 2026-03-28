@@ -247,11 +247,10 @@ export default async function handler(req, res) {
                 const blockCheck = await isUserBlocked(username, ip);
                 if (blockCheck.blocked) {
                     auditLog('LOGIN_USER_BLOCKED', { username, ip, remainingSeconds: blockCheck.remainingSeconds });
-                    return res.status(429)
-                        .set('Retry-After', String(blockCheck.remainingSeconds))
-                        .json({ 
-                            error: `Account temporarily locked. Please wait ${blockCheck.remainingSeconds} seconds.` 
-                        });
+                    res.setHeader('Retry-After', String(blockCheck.remainingSeconds));
+                    return res.status(429).json({ 
+                        error: `Account temporarily locked. Please wait ${blockCheck.remainingSeconds} seconds.` 
+                    });
                 }
             } catch (blockErr) {
                 console.error('[WARN] auth.js block check failed:', blockErr.message);
