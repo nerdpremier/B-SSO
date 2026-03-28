@@ -249,13 +249,13 @@ export default async function handler(req, res) {
                     auditLog('LOGIN_USER_BLOCKED', { username, ip, remainingSeconds: blockCheck.remainingSeconds });
                     res.setHeader('Retry-After', String(blockCheck.remainingSeconds));
                     return res.status(429).json({ 
-                        error: `Account temporarily locked. Please wait ${blockCheck.remainingSeconds} seconds.` 
+                        error: `Account locked. Please wait ${blockCheck.remainingSeconds} seconds.` 
                     });
                 }
             } catch (blockErr) {
                 console.error('[WARN] auth.js block check failed:', blockErr.message);
             }
-            
+
             if (typeof username !== 'string' || typeof password !== 'string') {
                 return res.status(400).json({ error: 'Invalid request data' });
             }

@@ -376,11 +376,11 @@ function startResendCooldown(seconds) {
 function startAccountLockdown(seconds) {
     const btn=document.getElementById('login-btn'); let remaining=seconds;
     if (btn) btn.disabled=true;
-    updateStatus('danger',`Account temporarily locked. Please wait ${remaining} seconds.`); remaining--;
+    updateStatus('danger',`Account locked. Please wait ${remaining} seconds.`); remaining--;
     clearInterval(countdownTimer);
     countdownTimer=setInterval(()=>{
         if (remaining<=0) { clearInterval(countdownTimer); if (btn) btn.disabled=false; updateStatus('success','Lockout period ended. You may try again.'); return; }
-        updateStatus('danger',`Account temporarily locked. Please wait ${remaining} seconds.`); remaining--;
+        updateStatus('danger',`Account locked. Please wait ${remaining} seconds.`); remaining--;
     },1000);
 }
 
