@@ -238,13 +238,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const signOutLink = document.querySelector('a[href="/logout"]');
   if (signOutLink) {
-    signOutLink.addEventListener('click', (e) => {
+    signOutLink.addEventListener('click', async (e) => {
       e.preventDefault();
+      
+      // Get CSRF token first
+      let csrfToken = null;
+      try {
+        const csrfRes = await fetch('/api/csrf', { credentials: 'include', cache: 'no-store' });
+        if (csrfRes.ok) {
+          const csrfData = await csrfRes.json();
+          csrfToken = csrfData?.token;
+        }
+      } catch (err) {
+        console.warn('Failed to get CSRF token:', err);
+      }
+      
       // Call logout API and clear cookies
+      const headers = { 'Content-Type': 'application/json' };
+      if (csrfToken) {
+        headers['X-CSRF-Token'] = csrfToken;
+      }
+      
       fetch('/api/logout', {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' }
+        headers
       }).catch(() => {}).finally(() => {
         // Clear cookies client side regardless of server response
         document.cookie = 'session_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Strict';
