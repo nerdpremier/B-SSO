@@ -248,6 +248,7 @@ export default async function handler(req, res) {
             : null;
 
         let preLoginScore = 0;
+        let loginIp = null;
         let combinedScore = null;
         let combinedAction = 'low';
 
@@ -263,7 +264,7 @@ export default async function handler(req, res) {
                 auditLog('TRACE_CORRELATION_STEP', { step: '1B_ID', parsedId: parsed });
                 if (Number.isInteger(parsed) && parsed > 0) {
                     const byId = await pool.query(
-                        `SELECT id, pre_login_score, is_success
+                        `SELECT id, pre_login_score, is_success, login_ip
                          FROM login_risks
                          WHERE id = $1 AND username = $2
                          LIMIT 1`,
@@ -272,6 +273,7 @@ export default async function handler(req, res) {
                     if (byId.rows[0]) {
                         loginRiskId = byId.rows[0].id;
                         preLoginScore = Number(byId.rows[0].pre_login_score || 0);
+                        loginIp = byId.rows[0].login_ip || null;
                         auditLog('TRACE_CORRELATION_MATCH', { step: '1B_ID', id: loginRiskId, preScore: preLoginScore, is_success: byId.rows[0].is_success });
                     } else {
                         auditLog('TRACE_CORRELATION_MISS', { step: '1B_ID', parsedId: parsed, username });
@@ -284,7 +286,7 @@ export default async function handler(req, res) {
             if (!loginRiskId && sessionJti) {
                 auditLog('TRACE_CORRELATION_STEP', { step: '2_JTI', sessionJti });
                 const preRes = await pool.query(
-                    `SELECT id, pre_login_score, is_success
+                    `SELECT id, pre_login_score, is_success, login_ip
                      FROM login_risks
                      WHERE username = $1 AND session_jti = $2
                      ORDER BY created_at DESC
@@ -294,6 +296,7 @@ export default async function handler(req, res) {
                 if (preRes.rows[0]) {
                     loginRiskId = preRes.rows[0].id;
                     preLoginScore = Number(preRes.rows[0].pre_login_score || 0);
+                    loginIp = preRes.rows[0].login_ip || null;
                     auditLog('TRACE_CORRELATION_MATCH', { step: '2_JTI', id: loginRiskId, preScore: preLoginScore, is_success: preRes.rows[0].is_success });
                 } else {
                     auditLog('TRACE_CORRELATION_MISS', { step: '2_JTI', sessionJti });
@@ -303,7 +306,7 @@ export default async function handler(req, res) {
             if (!loginRiskId) {
                 auditLog('TRACE_CORRELATION_STEP', { step: '3_FALLBACK', username });
                 const fallbackRes = await pool.query(
-                    `SELECT id, pre_login_score
+                    `SELECT id, pre_login_score, login_ip
                      FROM login_risks
                      WHERE username = $1 AND is_success = TRUE
                      ORDER BY created_at DESC
@@ -313,6 +316,7 @@ export default async function handler(req, res) {
                 if (fallbackRes.rows[0]) {
                     loginRiskId = fallbackRes.rows[0].id;
                     preLoginScore = Number(fallbackRes.rows[0].pre_login_score || 0);
+                    loginIp = fallbackRes.rows[0].login_ip || null;
                     auditLog('TRACE_CORRELATION_MATCH', { step: '3_FALLBACK', id: loginRiskId, preScore: preLoginScore });
                 } else {
                     auditLog('TRACE_CORRELATION_MISS', { step: '3_FALLBACK', username });
@@ -322,10 +326,18 @@ export default async function handler(req, res) {
             auditLog('TRACE_CORRELATION_ERROR', { message: preErr.message });
         }
 
-        auditLog('TRACE_CORRELATION_END', { loginRiskId, behaviorScore });
+        // ตรวจว่า IP เปลี่ยนจากตอน login หรือไม่
+        const ipChanged = !!(loginIp && ip && loginIp !== ip);
+        if (ipChanged) {
+            auditLog('BEHAVIOR_IP_CHANGED', {
+                username, loginIp, currentIp: ip, sessionJti,
+            });
+        }
+
+        auditLog('TRACE_CORRELATION_END', { loginRiskId, behaviorScore, ipChanged });
 
         if (behaviorScore != null && loginRiskId != null) {
-            combinedScore = combineRisk(preLoginScore, behaviorScore);
+            combinedScore = combineRisk(preLoginScore, behaviorScore, { ipChanged });
             combinedAction = actionFromCombinedScore(combinedScore);
 
             if (combinedAction === 'medium' && sessionJti) {
@@ -427,17 +439,25 @@ export default async function handler(req, res) {
 
         if (combinedAction === 'medium' && authType === 'oauth_bearer') {
             try {
+                // ensure return_url column exists
+                try {
+                    await pool.query(`ALTER TABLE stepup_challenges ADD COLUMN IF NOT EXISTS return_url TEXT`);
+                } catch { }
+
                 // เช็คว่ามี stepup challenge ที่ยัง active อยู่หรือไม่
                 const existingStepupRes = await pool.query(
-                    `SELECT id, expires_at
+                    `SELECT id, expires_at, return_url
                      FROM stepup_challenges
-                     WHERE username = $1 AND session_jti = $2 
-                       AND verified_at IS NULL 
+                     WHERE username = $1 AND session_jti = $2
+                       AND verified_at IS NULL
                        AND expires_at > NOW()
                      ORDER BY created_at DESC
                      LIMIT 1`,
                     [username, sessionJti]
                 );
+
+                // ดึง return_url จาก request (SDK ส่งมาบอกว่าผู้ใช้อยู่หน้าไหน)
+                const clientReturnUrl = req.body?.return_url || null;
 
                 if (existingStepupRes.rows.length > 0) {
                     // มี stepup ที่ยัง active อยู่แล้ว ไม่ต้องสร้างใหม่
@@ -450,10 +470,19 @@ export default async function handler(req, res) {
                         combinedScore
                     });
 
+                    // สร้าง redirect URL ไปที่หน้า stepup-verify ของ B-SSO
+                    const baseUrl = process.env.BASE_URL || '';
+                    const stepupPageUrl = new URL('/stepup-verify', baseUrl);
+                    stepupPageUrl.searchParams.set('challenge_id', existingStepup.id);
+                    if (clientReturnUrl || existingStepup.return_url) {
+                        stepupPageUrl.searchParams.set('return_url', clientReturnUrl || existingStepup.return_url);
+                    }
+
                     return res.status(200).json({
-                        action: 'step_up_required',
+                        action: 'step_up_redirect',
                         request_id: requestId,
                         stepup_id: existingStepup.id,
+                        stepup_redirect_url: stepupPageUrl.toString(),
                         expires_in: Math.floor((new Date(existingStepup.expires_at) - new Date()) / 1000),
                         reason: 'medium_risk_behavior_detected'
                     });
@@ -478,9 +507,9 @@ export default async function handler(req, res) {
                     .digest('hex');
 
                 await pool.query(
-                    `INSERT INTO stepup_challenges (id, username, session_jti, code_hash, expires_at)
-                     VALUES ($1, $2, $3, $4, NOW() + INTERVAL '5 minutes')`,
-                    [stepupId, username, sessionJti, codeHash]
+                    `INSERT INTO stepup_challenges (id, username, session_jti, code_hash, expires_at, return_url)
+                     VALUES ($1, $2, $3, $4, NOW() + INTERVAL '5 minutes', $5)`,
+                    [stepupId, username, sessionJti, codeHash, clientReturnUrl]
                 );
 
                 if (sessionJti) {
@@ -493,19 +522,53 @@ export default async function handler(req, res) {
                     }
                 }
 
-                auditLog('OAUTH_STEP_UP_AUTO_CREATED', {
+                // ส่ง OTP email จาก B-SSO (Centralized MFA)
+                let emailSent = false;
+                try {
+                    const userEmail = await pool.query('SELECT email FROM users WHERE username = $1', [username]);
+                    const email = userEmail.rows[0]?.email;
+                    if (email) {
+                        const { mailTransporter } = await import('../lib/mailer.js');
+                        await mailTransporter.sendMail({
+                            from:    `"B-SSO Security" <${process.env.EMAIL_FROM}>`,
+                            to:      email,
+                            subject: 'Step-up verification code (B-SSO)',
+                            html:    `<p>A security check was triggered while you were using an application.</p>
+                                      <p>Your verification code is:</p>
+                                      <h2 style="letter-spacing:2px;color:#2E75B6">${stepupCode}</h2>
+                                      <p>This code expires in 5 minutes.</p>
+                                      <p>If you did not trigger this, please change your password immediately.</p>`,
+                        });
+                        emailSent = true;
+                    }
+                } catch (mailErr) {
+                    console.error('[WARN] behavior.js auto step-up sendMail failed:', mailErr.message);
+                }
+
+                // สร้าง redirect URL ไปที่หน้า stepup-verify ของ B-SSO
+                const baseUrl = process.env.BASE_URL || '';
+                const stepupPageUrl = new URL('/stepup-verify', baseUrl);
+                stepupPageUrl.searchParams.set('challenge_id', stepupId);
+                if (clientReturnUrl) {
+                    stepupPageUrl.searchParams.set('return_url', clientReturnUrl);
+                }
+
+                auditLog('OAUTH_STEP_UP_CENTRALIZED_CREATED', {
                     username,
                     ip,
                     stepupId,
                     sessionJti,
-                    combinedScore
+                    combinedScore,
+                    emailSent,
+                    hasReturnUrl: !!clientReturnUrl
                 });
 
                 return res.status(200).json({
-                    action: 'step_up_required',
+                    action: 'step_up_redirect',
                     request_id: requestId,
                     stepup_id: stepupId,
-                    expires_in: 300, 
+                    stepup_redirect_url: stepupPageUrl.toString(),
+                    expires_in: 300,
                     reason: 'medium_risk_behavior_detected'
                 });
             } catch (stepupErr) {

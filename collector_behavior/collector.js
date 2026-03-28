@@ -31,6 +31,7 @@
 
     let _mediumPending = false;
     let _mediumPendingSince = null;
+    let _autoRedirect = true; // auto-redirect ไปที่ B-SSO เมื่อ step_up_redirect
 
     function record(type, payload) {
       events.push({
@@ -233,6 +234,7 @@
         const payload = {
           events: batch,
           page:   window.location.pathname,
+          return_url: window.location.href, // ส่ง URL ปัจจุบันให้ B-SSO เพื่อ redirect กลับหลัง MFA
           meta: {
             userAgent: navigator.userAgent,
           },
@@ -264,8 +266,21 @@
           const data = await res.json().catch(function () { return {}; });
           const action = (data.action || 'low').toLowerCase();
 
-          if ((action === 'medium' || action === 'step_up_required') && !_mediumPending) {
+          if (action === 'step_up_redirect' && data.stepup_redirect_url && !_mediumPending) {
+            // Centralized MFA: B-SSO จัดการ MFA เอง
+            // redirect ผู้ใช้ไปที่หน้า stepup-verify ของ B-SSO
+            _mediumPending = true;
+            _mediumPendingSince = Date.now();
+            window.dispatchEvent(new CustomEvent('bsso-behavior-stepup-redirect', { detail: data }));
 
+            // redirect ไปที่ B-SSO โดยอัตโนมัติ
+            // ถ้าแอปลูกค้าต้องการจัดการเอง ให้ listen event 'bsso-behavior-stepup-redirect'
+            // แล้วเรียก e.preventDefault() หรือ set _autoRedirect = false
+            if (_autoRedirect) {
+              window.location.href = data.stepup_redirect_url;
+            }
+          } else if ((action === 'medium' || action === 'step_up_required') && !_mediumPending) {
+            // fallback สำหรับกรณีที่ไม่มี redirect URL
             _mediumPending = true;
             _mediumPendingSince = Date.now();
             window.dispatchEvent(new CustomEvent('bsso-behavior-medium', { detail: data }));
@@ -310,7 +325,63 @@
       _mediumPendingSince = null;
     }
 
-    return { start, stop, clearMedium, setBearerToken };
+    function setAutoRedirect(enabled) {
+      _autoRedirect = !!enabled;
+    }
+
+    // ตรวจจับ stepup_token ใน URL หลัง redirect กลับจาก B-SSO
+    // เรียกหลัง page load เพื่อ validate token กับ B-SSO
+    async function handleStepupCallback() {
+      const params = new URLSearchParams(window.location.search);
+      const stepupVerified = params.get('stepup_verified');
+      const stepupToken = params.get('stepup_token');
+
+      if (stepupVerified !== '1' || !stepupToken) return false;
+
+      // ลบ parameter ออกจาก URL (clean up)
+      const cleanUrl = new URL(window.location.href);
+      cleanUrl.searchParams.delete('stepup_verified');
+      cleanUrl.searchParams.delete('stepup_token');
+      try {
+        window.history.replaceState({}, '', cleanUrl.toString());
+      } catch { }
+
+      // validate token กับ B-SSO
+      try {
+        const headers = {
+          'Content-Type': 'application/json',
+        };
+        if (_bearerToken) {
+          headers['Authorization'] = 'Bearer ' + _bearerToken;
+        }
+
+        const validateRes = await fetch('/api/stepup', {
+          method: 'POST',
+          headers: headers,
+          body: JSON.stringify({
+            action: 'validate-token',
+            stepup_token: stepupToken
+          }),
+        });
+
+        if (validateRes.ok) {
+          const data = await validateRes.json();
+          if (data.valid) {
+            _mediumPending = false;
+            _mediumPendingSince = null;
+            window.dispatchEvent(new CustomEvent('bsso-stepup-verified', { detail: { token: stepupToken } }));
+            return true;
+          }
+        }
+      } catch (err) {
+        console && console.debug && console.debug('[BSSOBehaviorCollector] stepup validate error', err.message || err);
+      }
+
+      window.dispatchEvent(new CustomEvent('bsso-stepup-failed', { detail: { token: stepupToken } }));
+      return false;
+    }
+
+    return { start, stop, clearMedium, setBearerToken, setAutoRedirect, handleStepupCallback };
   }
 
   window.BSSOBehaviorCollector = createCollector();

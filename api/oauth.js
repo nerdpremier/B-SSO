@@ -716,9 +716,9 @@ async function handleToken(req, res, ip) {
             const refreshExp   = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 86400 * 1000);
 
             await tokenClient.query(
-                `INSERT INTO oauth_tokens (token_hash, token_type, client_id, username, scope, expires_at, pre_login_log_id, pre_login_score)
-                 VALUES ($1, 'refresh', $2, $3, $4, $5, $6, $7)`,
-                [refreshHash, client_id, codeRow.username, scope, refreshExp, codePreLoginLogId, preLoginScore]
+                `INSERT INTO oauth_tokens (token_hash, token_type, client_id, username, scope, expires_at)
+                 VALUES ($1, 'refresh', $2, $3, $4, $5)`,
+                [refreshHash, client_id, codeRow.username, scope, refreshExp]
             );
 
             await tokenClient.query('COMMIT');
@@ -875,20 +875,10 @@ async function handleToken(req, res, ip) {
             const newRefreshHash  = hashToken(newRefreshToken);
             const newRefreshExp   = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 86400 * 1000);
 
-            // Get pre_login_log_id and pre_login_score from the old refresh token
-            const oldTokenRes = await tokenClient.query(
-                `SELECT pre_login_log_id, pre_login_score 
-                 FROM oauth_tokens 
-                 WHERE id = $1`,
-                [rt.id]
-            );
-            const oldPreLoginLogId = oldTokenRes.rows[0]?.pre_login_log_id || null;
-            const oldPreLoginScore = oldTokenRes.rows[0]?.pre_login_score || refreshPreLoginScore;
-
             await tokenClient.query(
-                `INSERT INTO oauth_tokens (token_hash, token_type, client_id, username, scope, expires_at, risk_level, pre_login_log_id, pre_login_score)
-                 VALUES ($1, 'refresh', $2, $3, $4, $5, $6, $7, $8)`,
-                [newRefreshHash, client_id, rt.username, scope, newRefreshExp, currentRiskLevel, oldPreLoginLogId, oldPreLoginScore]
+                `INSERT INTO oauth_tokens (token_hash, token_type, client_id, username, scope, expires_at, risk_level)
+                 VALUES ($1, 'refresh', $2, $3, $4, $5, $6)`,
+                [newRefreshHash, client_id, rt.username, scope, newRefreshExp, currentRiskLevel]
             );
 
             await tokenClient.query('COMMIT');

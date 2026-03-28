@@ -32,6 +32,7 @@
     { "source": "/forgot-password", "destination": "/forgot-password.html" },
     { "source": "/reset-password",  "destination": "/reset-password.html" },
     { "source": "/oauth/authorize", "destination": "/authorize.html" },
+    { "source": "/stepup-verify",   "destination": "/stepup-verify.html" },
     { "source": "/console",       "destination": "/client-console.html" },
     { "source": "/front-logout",    "destination": "/front-logout.html" }
   ],
@@ -66,7 +67,7 @@
       ]
     },
     {
-      "source": "/(|login|register|mfa|welcome|forgot-password|reset-password|logout)",
+      "source": "/(|login|register|mfa|welcome|forgot-password|reset-password|logout|stepup-verify)",
       "headers": [
         { "key": "Content-Security-Policy", "value": "upgrade-insecure-requests; default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; img-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'; form-action 'self'" },
         { "key": "Cache-Control",           "value": "no-store" }
@@ -106,6 +107,16 @@
         { "key": "Access-Control-Allow-Origin",  "value": "*" },
         { "key": "Access-Control-Allow-Methods", "value": "GET, POST, OPTIONS" },
         { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization" },
+        { "key": "Access-Control-Max-Age",       "value": "86400" },
+        { "key": "Cache-Control",                "value": "no-store" }
+      ]
+    },
+    {
+      "source": "/api/stepup",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin",  "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization, X-CSRF-Token" },
         { "key": "Access-Control-Max-Age",       "value": "86400" },
         { "key": "Cache-Control",                "value": "no-store" }
       ]

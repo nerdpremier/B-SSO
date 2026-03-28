@@ -278,13 +278,17 @@ async function preLoginCheck() {
                 updateStatus('success','Signed in successfully. Redirecting…');
 
                 let dest = authData.redirectUrl;
+                const returnedLogId = authData.logId || safeLogId;
 
                 if (!dest) {
 
                     if (nextUrl && nextUrl.includes('/oauth/authorize')) {
-                        dest = nextUrl; 
+                        // แปะ pre_login_log_id ไปกับ OAuth authorize URL
+                        const oauthUrl = new URL(nextUrl, window.location.origin);
+                        oauthUrl.searchParams.set('pre_login_log_id', returnedLogId);
+                        dest = oauthUrl.toString();
                     } else {
-                        dest = nextUrl || '/welcome'; 
+                        dest = nextUrl || '/welcome';
                     }
                 } else {
                 }
@@ -327,9 +331,12 @@ async function verifyMFA() {
             if (!dest) {
 
                 if (nextUrl && nextUrl.includes('/oauth/authorize')) {
-                    dest = nextUrl; 
+                    // แปะ pre_login_log_id ไปกับ OAuth authorize URL
+                    const oauthUrl = new URL(nextUrl, window.location.origin);
+                    oauthUrl.searchParams.set('pre_login_log_id', logId);
+                    dest = oauthUrl.toString();
                 } else {
-                    dest = nextUrl || '/welcome'; 
+                    dest = nextUrl || '/welcome';
                 }
             }
             setTimeout(()=>window.location.href=dest,1000);

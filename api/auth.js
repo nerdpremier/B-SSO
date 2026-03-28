@@ -468,7 +468,7 @@ export default async function handler(req, res) {
                                     'INSERT INTO sso_tokens (token, user_id) VALUES ($1, $2)',
                                     [sso_token, user.id]
                                 );
-                                redirectUrl = `${redirect_back}?sso_token=${sso_token}`;
+                                redirectUrl = `${redirect_back}?sso_token=${sso_token}&pre_login_log_id=${parsedLogId}`;
                             } catch (ssoErr) {
                                 console.error('[WARN] auth.js SSO token insert failed:', ssoErr.message);
                             }
@@ -492,7 +492,7 @@ export default async function handler(req, res) {
                 }));
 
                 auditLog('LOGIN_SUCCESS', { username, ip });
-                return res.status(200).json({ success: true, redirectUrl });
+                return res.status(200).json({ success: true, redirectUrl, logId: parsedLogId });
             } catch (err) {
                 try { await loginClient.query('ROLLBACK'); } catch { }
                 throw err;
