@@ -295,6 +295,12 @@ async function preLoginCheck() {
                 setTimeout(()=>window.location.href=dest,1000);
             }
         } else {
+            if (authRes.status === 429) {
+                const retryAfter = authRes.headers.get('Retry-After');
+                const seconds = retryAfter ? parseInt(retryAfter, 10) : 60;
+                startAccountLockdown(seconds);
+                return;
+            }
             if (authData.email_not_verified) updateStatus('warning','Please verify your email before signing in. Check your inbox (or spam folder).');
             else updateStatus('danger', authData.error||'Incorrect username or password.');
         }
