@@ -25,7 +25,9 @@
     }
 
     // Set cancel link to return_url
-    cancelLink.href = returnUrl;
+    if (cancelLink) {
+      cancelLink.href = returnUrl;
+    }
     return true;
   }
 
