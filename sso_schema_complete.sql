@@ -75,6 +75,9 @@ CREATE TABLE IF NOT EXISTS login_risks (
     last_behavior_at    TIMESTAMPTZ,
     behavior_samples    INTEGER DEFAULT 0,
 
+    -- Connection metadata
+    login_ip        TEXT        NULL,
+
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -182,6 +185,7 @@ CREATE TABLE IF NOT EXISTS oauth_codes (
     code_challenge_method TEXT       NULL,
     expires_at          TIMESTAMPTZ  NOT NULL,
     used                BOOLEAN      NOT NULL DEFAULT FALSE,
+    pre_login_log_id    INTEGER      NULL,             -- Reference to login_risks.id
     created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
@@ -205,7 +209,8 @@ CREATE TABLE IF NOT EXISTS oauth_tokens (
     expires_at  TIMESTAMPTZ      NOT NULL,
     revoked_at  TIMESTAMPTZ      NULL,
     created_at  TIMESTAMPTZ      NOT NULL DEFAULT NOW(),
-    pre_login_score DOUBLE PRECISION  -- Pre-login risk score from login_risks
+    pre_login_score DOUBLE PRECISION,  -- Pre-login risk score from login_risks
+    pre_login_log_id INTEGER NULL      -- Reference to login_risks.id
 );
 
 CREATE INDEX IF NOT EXISTS idx_oauth_tokens_client_user

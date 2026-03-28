@@ -53,6 +53,9 @@ function getDeviceInfo() {
 async function init() {
   document.body.classList.remove('auth-pending');
   $id('main-card').hidden = false;
+  $id('loading-overlay').hidden = false;
+  $id('consent-ui').hidden = true;
+  $id('error-ui').hidden = true;
 
   const sp           = new URLSearchParams(window.location.search);
   const clientId     = sp.get('client_id');
