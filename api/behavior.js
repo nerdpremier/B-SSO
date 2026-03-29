@@ -3,7 +3,7 @@ import jwt                 from 'jsonwebtoken';
 import crypto              from 'crypto';
 import { parse }           from 'cookie';
 import { getClientIp }     from '../lib/ip-utils.js';
-import { checkRateLimit, blockUser, isUserBlocked }  from '../lib/rate-limit.js';
+import { checkRateLimit }  from '../lib/rate-limit.js';
 import { LOGID_TTL_MINUTES } from '../lib/constants.js';
 import {
     setSecurityHeaders,
@@ -67,11 +67,9 @@ export default async function handler(req, res) {
                 audience: 'b-sso-api'
             });
         } catch {
-            await blockUser(decoded?.username, ip);
             return res.status(401).json({ action: 'revoke' });
         }
         if (!decoded || typeof decoded.username !== 'string' || !decoded.jti) {
-            await blockUser(decoded?.username, ip);
             return res.status(401).json({ action: 'revoke' });
         }
         username = decoded.username;
@@ -101,13 +99,11 @@ export default async function handler(req, res) {
             const row = result.rows[0];
             if (row.revoked_at) {
                 res.setHeader('WWW-Authenticate', 'Bearer realm="oauth", error="invalid_token"');
-                await blockUser(row.username, ip);
                 return res.status(401).json({ action: 'revoke' });
             }
             if (new Date() > new Date(row.expires_at)) {
                 res.setHeader('WWW-Authenticate',
                     'Bearer realm="oauth", error="invalid_token", error_description="token expired"');
-                await blockUser(row.username, ip);
                 return res.status(401).json({ action: 'revoke' });
             }
 
@@ -122,22 +118,6 @@ export default async function handler(req, res) {
         }
     } else {
         return res.status(401).json({ action: 'revoke' });
-    }
-
-    if (username) {
-        try {
-            const blockCheck = await isUserBlocked(username, ip);
-            if (blockCheck.blocked) {
-                auditLog('BEHAVIOR_USER_BLOCKED', { username, ip, remainingSeconds: blockCheck.remainingSeconds });
-                return res.status(429).json({
-                    action: 'revoke',
-                    reason: 'user_blocked',
-                    retry_after: blockCheck.remainingSeconds
-                });
-            }
-        } catch (blockErr) {
-            console.error('[WARN] behavior.js block check failed:', blockErr.message);
-        }
     }
 
     await ensureBehaviorRisksSchema();
@@ -406,8 +386,6 @@ export default async function handler(req, res) {
         });
 
         if (combinedAction === 'revoke') {
-            await blockUser(username, ip);
-            
             if (authType === 'session_cookie') {
                 let exp = null;
                 try {
@@ -485,8 +463,6 @@ export default async function handler(req, res) {
                         );
                     }
 
-                    await blockUser(username, ip);
-
                     return res.status(200).json({
                         action: 'revoke',
                         reason: 'too_many_stepup_challenges_in_2min'
@@ -528,8 +504,6 @@ export default async function handler(req, res) {
                 const pepper = process.env.MFA_PEPPER;
                 if (!pepper) {
                     console.error('[FATAL] MFA_PEPPER environment variable not set');
-
-                    await blockUser(username, ip);
 
                     return res.status(500).json({
                         action: 'revoke',
