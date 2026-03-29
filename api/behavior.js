@@ -50,16 +50,6 @@ export default async function handler(req, res) {
     const ip = getClientIp(req);
     const requestId = crypto.randomUUID();
 
-    try {
-        if (await checkRateLimit(`ip:${ip}:behavior`, 60, 60_000)) {
-            auditLog('BEHAVIOR_RATE_LIMIT', { ip });
-
-            return res.status(429).json({ action: 'low', message: 'Too many behavior events' });
-        }
-    } catch (rlErr) {
-        console.error('[WARN] rate-limit DB error (behavior), failing open:', rlErr.message);
-    }
-
     const cookies = parse(req.headers.cookie || '');
     const sessionCookieToken = cookies.session_token;
     const authHeader = req.headers.authorization;
